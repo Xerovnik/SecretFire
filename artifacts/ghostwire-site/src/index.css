@@ -137,25 +137,45 @@
   color: transparent;
   -webkit-background-clip: text;
   background-clip: text;
-  background-image: repeating-linear-gradient(
+  background-image: linear-gradient(
     to bottom,
-    transparent                  0px,
-    transparent                  16px,
-    rgba(160, 255, 255, 0.90)    16px,
-    rgba(160, 255, 255, 0.90)    22px,
-    transparent                  22px,
-    transparent                  42px,
-    rgba(160, 255, 255, 0.85)    42px,
-    rgba(160, 255, 255, 0.85)    48px,
-    transparent                  48px,
-    transparent                  66px,
-    rgba(160, 255, 255, 0.88)    66px,
-    rgba(160, 255, 255, 0.88)    72px,
-    transparent                  72px,
-    transparent                  90px
+    transparent              0px,
+    transparent              22px,
+    rgba(160,255,255,0.91)   22px,
+    rgba(160,255,255,0.91)   24px,
+    transparent              24px,
+    transparent              57px,
+    rgba(160,255,255,0.84)   57px,
+    rgba(160,255,255,0.84)   60px,
+    transparent              60px,
+    transparent              91px,
+    rgba(160,255,255,0.94)   91px,
+    rgba(160,255,255,0.94)   92px,
+    transparent              92px,
+    transparent              133px,
+    rgba(160,255,255,0.81)   133px,
+    rgba(160,255,255,0.81)   139px,
+    transparent              139px,
+    transparent              179px,
+    rgba(160,255,255,0.87)   179px,
+    rgba(160,255,255,0.87)   183px,
+    transparent              183px,
+    transparent              219px,
+    rgba(160,255,255,0.93)   219px,
+    rgba(160,255,255,0.93)   220px,
+    transparent              220px,
+    transparent              263px,
+    rgba(160,255,255,0.85)   263px,
+    rgba(160,255,255,0.85)   268px,
+    transparent              268px,
+    transparent              314px,
+    rgba(160,255,255,0.89)   314px,
+    rgba(160,255,255,0.89)   317px,
+    transparent              317px,
+    transparent              360px
   );
-  background-size: 100% 90px;
-  animation: crt-bars-roll 3s linear infinite;
+  background-size: 100% 360px;
+  animation: crt-bars-roll 9s linear infinite;
   pointer-events: none;
   user-select: none;
   white-space: nowrap;
@@ -163,7 +183,7 @@
 
 @keyframes crt-bars-roll {
   from { background-position: 0 0; }
-  to   { background-position: 0 -90px; }
+  to   { background-position: 0 -360px; }
 }
 
 .static-text {
