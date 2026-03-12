@@ -85,8 +85,10 @@ export default function Home() {
               className="text-5xl sm:text-6xl md:text-8xl font-display font-bold text-foreground leading-tight mb-6"
             >
               BROADCAST <br />
-              <span className="static-text" data-text="FREELY.">
-                FREELY.
+              <span className="static-wrap">
+                <span className="static-text" data-text="FREELY.">
+                  FREELY.
+                </span>
               </span>
             </motion.h1>
             
