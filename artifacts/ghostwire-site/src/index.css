@@ -117,6 +117,19 @@
   display: inline-block;
 }
 
+.static-wrap::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    rgba(0, 0, 0, 0) 50%,
+    rgba(0, 0, 0, 0.18) 50%
+  );
+  background-size: 100% 3px;
+  pointer-events: none;
+  z-index: 3;
+}
+
 .crt-bars {
   position: absolute;
   top: 0;
@@ -156,10 +169,31 @@
 .static-text {
   position: relative;
   color: hsl(var(--primary));
-  text-shadow:
-    0 0 24px hsl(var(--primary) / 0.45),
-    0 0 60px hsl(var(--primary) / 0.15);
-  animation: static-flicker 5s steps(1) infinite;
+  animation: static-flicker 5s steps(1) infinite, crt-chroma 1.6s infinite;
+}
+
+@keyframes crt-chroma {
+  0%   { text-shadow:  0.44px 0 1px rgba(0,30,255,0.40), -0.44px 0 1px rgba(255,0,80,0.22), 0 0 22px hsl(var(--primary)/0.45), 0 0 55px hsl(var(--primary)/0.12); }
+  5%   { text-shadow:  2.79px 0 1px rgba(0,30,255,0.40), -2.79px 0 1px rgba(255,0,80,0.22), 0 0 22px hsl(var(--primary)/0.45), 0 0 55px hsl(var(--primary)/0.12); }
+  10%  { text-shadow:  0.03px 0 1px rgba(0,30,255,0.40), -0.03px 0 1px rgba(255,0,80,0.22), 0 0 22px hsl(var(--primary)/0.45), 0 0 55px hsl(var(--primary)/0.12); }
+  15%  { text-shadow:  0.40px 0 1px rgba(0,30,255,0.40), -0.40px 0 1px rgba(255,0,80,0.22), 0 0 22px hsl(var(--primary)/0.45), 0 0 55px hsl(var(--primary)/0.12); }
+  20%  { text-shadow:  3.48px 0 1px rgba(0,30,255,0.40), -3.48px 0 1px rgba(255,0,80,0.22), 0 0 22px hsl(var(--primary)/0.45), 0 0 55px hsl(var(--primary)/0.12); }
+  25%  { text-shadow:  1.61px 0 1px rgba(0,30,255,0.40), -1.61px 0 1px rgba(255,0,80,0.22), 0 0 22px hsl(var(--primary)/0.45), 0 0 55px hsl(var(--primary)/0.12); }
+  30%  { text-shadow:  0.70px 0 1px rgba(0,30,255,0.40), -0.70px 0 1px rgba(255,0,80,0.22), 0 0 22px hsl(var(--primary)/0.45), 0 0 55px hsl(var(--primary)/0.12); }
+  35%  { text-shadow:  3.90px 0 1px rgba(0,30,255,0.40), -3.90px 0 1px rgba(255,0,80,0.22), 0 0 22px hsl(var(--primary)/0.45), 0 0 55px hsl(var(--primary)/0.12); }
+  40%  { text-shadow:  3.87px 0 1px rgba(0,30,255,0.40), -3.87px 0 1px rgba(255,0,80,0.22), 0 0 22px hsl(var(--primary)/0.45), 0 0 55px hsl(var(--primary)/0.12); }
+  45%  { text-shadow:  2.23px 0 1px rgba(0,30,255,0.40), -2.23px 0 1px rgba(255,0,80,0.22), 0 0 22px hsl(var(--primary)/0.45), 0 0 55px hsl(var(--primary)/0.12); }
+  50%  { text-shadow:  0.08px 0 1px rgba(0,30,255,0.40), -0.08px 0 1px rgba(255,0,80,0.22), 0 0 22px hsl(var(--primary)/0.45), 0 0 55px hsl(var(--primary)/0.12); }
+  55%  { text-shadow:  2.38px 0 1px rgba(0,30,255,0.40), -2.38px 0 1px rgba(255,0,80,0.22), 0 0 22px hsl(var(--primary)/0.45), 0 0 55px hsl(var(--primary)/0.12); }
+  60%  { text-shadow:  2.20px 0 1px rgba(0,30,255,0.40), -2.20px 0 1px rgba(255,0,80,0.22), 0 0 22px hsl(var(--primary)/0.45), 0 0 55px hsl(var(--primary)/0.12); }
+  65%  { text-shadow:  2.86px 0 1px rgba(0,30,255,0.40), -2.86px 0 1px rgba(255,0,80,0.22), 0 0 22px hsl(var(--primary)/0.45), 0 0 55px hsl(var(--primary)/0.12); }
+  70%  { text-shadow:  0.49px 0 1px rgba(0,30,255,0.40), -0.49px 0 1px rgba(255,0,80,0.22), 0 0 22px hsl(var(--primary)/0.45), 0 0 55px hsl(var(--primary)/0.12); }
+  75%  { text-shadow:  1.89px 0 1px rgba(0,30,255,0.40), -1.89px 0 1px rgba(255,0,80,0.22), 0 0 22px hsl(var(--primary)/0.45), 0 0 55px hsl(var(--primary)/0.12); }
+  80%  { text-shadow:  0.08px 0 1px rgba(0,30,255,0.40), -0.08px 0 1px rgba(255,0,80,0.22), 0 0 22px hsl(var(--primary)/0.45), 0 0 55px hsl(var(--primary)/0.12); }
+  85%  { text-shadow:  0.10px 0 1px rgba(0,30,255,0.40), -0.10px 0 1px rgba(255,0,80,0.22), 0 0 22px hsl(var(--primary)/0.45), 0 0 55px hsl(var(--primary)/0.12); }
+  90%  { text-shadow:  3.44px 0 1px rgba(0,30,255,0.40), -3.44px 0 1px rgba(255,0,80,0.22), 0 0 22px hsl(var(--primary)/0.45), 0 0 55px hsl(var(--primary)/0.12); }
+  95%  { text-shadow:  2.18px 0 1px rgba(0,30,255,0.40), -2.18px 0 1px rgba(255,0,80,0.22), 0 0 22px hsl(var(--primary)/0.45), 0 0 55px hsl(var(--primary)/0.12); }
+  100% { text-shadow:  2.62px 0 1px rgba(0,30,255,0.40), -2.62px 0 1px rgba(255,0,80,0.22), 0 0 22px hsl(var(--primary)/0.45), 0 0 55px hsl(var(--primary)/0.12); }
 }
 
 .static-text::before,
