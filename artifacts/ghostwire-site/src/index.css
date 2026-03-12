@@ -115,35 +115,37 @@
 .static-wrap {
   position: relative;
   display: inline-block;
-  isolation: isolate;
 }
 
-.static-wrap::before {
-  content: '';
+.crt-bars {
   position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
+  top: 0;
+  left: 0;
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+  background-image: repeating-linear-gradient(
     to bottom,
-    transparent                0px,
-    transparent                13px,
-    rgba(255, 255, 255, 0.75)  13px,
-    rgba(255, 255, 255, 0.75)  18px,
-    transparent                18px,
-    transparent                36px,
-    rgba(255, 255, 255, 0.60)  36px,
-    rgba(255, 255, 255, 0.60)  40px,
-    transparent                40px,
-    transparent                62px,
-    rgba(255, 255, 255, 0.70)  62px,
-    rgba(255, 255, 255, 0.70)  67px,
-    transparent                67px,
-    transparent                90px
+    transparent                  0px,
+    transparent                  18px,
+    rgba(255, 255, 255, 0.95)    18px,
+    rgba(255, 255, 255, 0.95)    20px,
+    transparent                  20px,
+    transparent                  42px,
+    rgba(255, 255, 255, 0.80)    42px,
+    rgba(255, 255, 255, 0.80)    44px,
+    transparent                  44px,
+    transparent                  64px,
+    rgba(255, 255, 255, 0.88)    64px,
+    rgba(255, 255, 255, 0.88)    65px,
+    transparent                  65px,
+    transparent                  90px
   );
   background-size: 100% 90px;
-  animation: crt-bars-roll 2.5s linear infinite;
-  mix-blend-mode: overlay;
+  animation: crt-bars-roll 3s linear infinite;
   pointer-events: none;
-  z-index: 2;
+  user-select: none;
+  white-space: nowrap;
 }
 
 @keyframes crt-bars-roll {

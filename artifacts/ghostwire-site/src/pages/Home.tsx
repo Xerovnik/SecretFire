@@ -86,9 +86,8 @@ export default function Home() {
             >
               BROADCAST <br />
               <span className="static-wrap">
-                <span className="static-text" data-text="FREELY.">
-                  FREELY.
-                </span>
+                <span className="static-text" data-text="FREELY.">FREELY.</span>
+                <span className="crt-bars" aria-hidden="true">FREELY.</span>
               </span>
             </motion.h1>
             
