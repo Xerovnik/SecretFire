@@ -22,8 +22,6 @@ logger = logging.getLogger("gossip")
 
 
 def _peer_url(onion_address: str) -> str:
-    if onion_address.endswith(".onion"):
-        return f"http://{onion_address}"
     return f"http://{onion_address}"
 
 
@@ -152,7 +150,7 @@ class GossipManager:
                 message_id=h["msg_id_b64"],
                 seq_num=h["seq_num"],
                 total_parts=h["total_parts"],
-                encrypted_payload=h["encrypted_payload"],
+                encrypted_blob=h["encrypted_payload"],
                 session_key=base64.b64encode(key).decode(),
             )
             self._process_complete_fragments()
@@ -174,7 +172,7 @@ class GossipManager:
 
             try:
                 session_key = base64.b64decode(session_key_b64)
-                fragments_list = [(f["seq_num"], bytes(f["encrypted_payload"])) for f in frags]
+                fragments_list = [(f["seq_num"], bytes(f["encrypted_blob"])) for f in frags]
                 message = protocol.reassemble_fragments(fragments_list, session_key)
                 if message:
                     try:

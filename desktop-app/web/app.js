@@ -257,11 +257,11 @@ async function syncNow() {
   }
 }
 
-function showTab(tab) {
+function showTab(tab, el) {
   document.getElementById("tab-feed").style.display = tab === "feed" ? "" : "none";
   document.getElementById("tab-peers").style.display = tab === "peers" ? "" : "none";
   document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
-  event.currentTarget.classList.add("active");
+  el.classList.add("active");
   if (tab === "peers") loadPeers();
 }
 
