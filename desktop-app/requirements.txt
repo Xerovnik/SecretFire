@@ -1,6 +1,6 @@
 flask>=3.0.0
-flask-cors>=4.0.0
-cryptography>=42.0.0
+flask-cors>=4.0.2
+cryptography>=46.0.5
 stem>=1.8.2
 requests[socks]>=2.31.0
 pysocks>=1.7.1

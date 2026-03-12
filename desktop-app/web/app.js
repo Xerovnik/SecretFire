@@ -94,7 +94,7 @@ function renderPostItem(post) {
   const isLocal = post.author_pubkey === myPubKey;
   const ts = new Date(post.timestamp * 1000);
   const timeStr = formatTime(ts);
-  const shortKey = post.author_pubkey ? shortPubKey(post.author_pubkey) : "anon";
+  const shortKey = post.author_pubkey ? escapeHtml(shortPubKey(post.author_pubkey)) : "anon";
   const avatarEmoji = isLocal ? "👻" : getAvatar(post.author_pubkey);
 
   return `
