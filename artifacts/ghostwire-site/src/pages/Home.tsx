@@ -85,7 +85,7 @@ export default function Home() {
               className="text-5xl sm:text-6xl md:text-8xl font-display font-bold text-foreground leading-tight mb-6"
             >
               BROADCAST <br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary glitch-text">
+              <span className="static-text" data-text="FREELY.">
                 FREELY.
               </span>
             </motion.h1>

@@ -112,33 +112,55 @@
   }
 }
 
-.glitch-text {
+.static-text {
   position: relative;
-  text-shadow: 0.05em 0 0 rgba(255,0,0,0.75), -0.025em -0.05em 0 rgba(0,255,0,0.75), 0.025em 0.05em 0 rgba(0,0,255,0.75);
-  animation: glitch 500ms infinite;
+  color: hsl(var(--primary));
+  text-shadow:
+    0 0 24px hsl(var(--primary) / 0.45),
+    0 0 60px hsl(var(--primary) / 0.15);
+  animation: static-flicker 5s steps(1) infinite;
 }
 
-@keyframes glitch {
-  0% {
-    text-shadow: 0.05em 0 0 rgba(255,0,0,0.75), -0.05em -0.025em 0 rgba(0,255,0,0.75), -0.025em 0.05em 0 rgba(0,0,255,0.75);
+.static-text::before,
+.static-text::after {
+  content: attr(data-text);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  color: hsl(var(--primary));
+  pointer-events: none;
+  opacity: 0;
+}
+
+.static-text::before {
+  animation: static-band-top 6s steps(1) infinite;
+}
+
+.static-text::after {
+  animation: static-band-bot 9s steps(1) infinite;
+}
+
+@keyframes static-flicker {
+  0%, 91%, 93%, 95%, 100% { opacity: 1; }
+  92%, 94%                 { opacity: 0.72; }
+}
+
+@keyframes static-band-top {
+  0%, 84%, 86%, 100% { opacity: 0; transform: none; }
+  85% {
+    opacity: 1;
+    transform: translateX(-5px);
+    clip-path: polygon(0 18%, 100% 18%, 100% 36%, 0 36%);
   }
-  14% {
-    text-shadow: 0.05em 0 0 rgba(255,0,0,0.75), -0.05em -0.025em 0 rgba(0,255,0,0.75), -0.025em 0.05em 0 rgba(0,0,255,0.75);
-  }
-  15% {
-    text-shadow: -0.05em -0.025em 0 rgba(255,0,0,0.75), 0.025em 0.025em 0 rgba(0,255,0,0.75), -0.05em -0.05em 0 rgba(0,0,255,0.75);
-  }
-  49% {
-    text-shadow: -0.05em -0.025em 0 rgba(255,0,0,0.75), 0.025em 0.025em 0 rgba(0,255,0,0.75), -0.05em -0.05em 0 rgba(0,0,255,0.75);
-  }
-  50% {
-    text-shadow: 0.025em 0.05em 0 rgba(255,0,0,0.75), 0.05em 0 0 rgba(0,255,0,0.75), 0 -0.05em 0 rgba(0,0,255,0.75);
-  }
-  99% {
-    text-shadow: 0.025em 0.05em 0 rgba(255,0,0,0.75), 0.05em 0 0 rgba(0,255,0,0.75), 0 -0.05em 0 rgba(0,0,255,0.75);
-  }
-  100% {
-    text-shadow: -0.025em 0 0 rgba(255,0,0,0.75), -0.025em -0.025em 0 rgba(0,255,0,0.75), -0.025em -0.05em 0 rgba(0,0,255,0.75);
+}
+
+@keyframes static-band-bot {
+  0%, 69%, 71%, 100% { opacity: 0; transform: none; }
+  70% {
+    opacity: 1;
+    transform: translateX(4px);
+    clip-path: polygon(0 55%, 100% 55%, 100% 74%, 0 74%);
   }
 }
 
