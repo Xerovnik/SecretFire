@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GhostWire</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <a class="logo" href="#">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2a10 10 0 1 0 10 10"/>
+        <path d="M12 2c2.5 2.5 4 5.9 4 10"/>
+        <path d="M12 2C9.5 4.5 8 7.9 8 12"/>
+        <line x1="2" y1="12" x2="22" y2="12"/>
+        <path d="M17 17l5 5"/>
+        <path d="M17 22l5-5"/>
+      </svg>
+      GhostWire
+    </a>
+    <div class="header-status">
+      <div class="status-dot" id="status-dot"></div>
+      <span id="status-text">Connecting...</span>
+    </div>
+  </header>
+
+  <aside>
+    <div class="nav-section">
+      <div class="nav-label">Navigation</div>
+      <button class="nav-btn active" onclick="showTab('feed')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Feed
+      </button>
+      <button class="nav-btn" onclick="showTab('peers')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Peers
+      </button>
+      <button class="nav-btn" onclick="syncNow()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        Sync Now
+      </button>
+    </div>
+
+    <div class="nav-section" id="sidebar-node-info">
+      <div class="nav-label">Your Node</div>
+      <div class="onion-card">
+        <div class="onion-label">Hidden Service</div>
+        <div class="onion-addr" id="sidebar-onion">Loading...</div>
+      </div>
+    </div>
+  </aside>
+
+  <main id="main-content">
+    <div id="tab-feed">
+      <div class="compose-box">
+        <div class="compose-inner">
+          <div class="avatar">👻</div>
+          <div class="compose-right">
+            <textarea id="compose-input" placeholder="What's happening? (anonymously)" maxlength="500" oninput="updateCharCount()" onkeydown="handleComposeKey(event)"></textarea>
+            <div class="compose-footer">
+              <span class="char-count" id="char-count">0 / 500</span>
+              <button class="btn btn-primary" id="post-btn" onclick="submitPost()">
+                Broadcast
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="feed-header">
+        <div class="feed-tabs">
+          <button class="feed-tab active" onclick="setFeedTab('global', this)">Global Feed</button>
+          <button class="feed-tab" onclick="setFeedTab('local', this)">My Posts</button>
+        </div>
+        <span id="post-count" style="font-size:12px;color:var(--text2)">0 posts</span>
+      </div>
+
+      <div id="post-list" class="post-list">
+        <div class="empty-feed">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <h3>No posts yet</h3>
+          <p>Be the first to broadcast anonymously.</p>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-peers" style="display:none; padding:20px;">
+      <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;">Known Peers</h2>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:20px;">
+        Peers are other GhostWire nodes. Your app syncs posts and shares the peer list automatically.
+      </p>
+
+      <div style="margin-bottom:20px;">
+        <div class="nav-label">Add a Peer</div>
+        <div class="add-peer-form" style="margin-top:8px;">
+          <input type="text" id="new-peer-input" placeholder="abc123...onion or host:port" />
+          <button class="btn btn-primary" onclick="addPeer()" style="white-space:nowrap;">Add Peer</button>
+        </div>
+      </div>
+
+      <div id="peer-list-full"></div>
+    </div>
+  </main>
+
+  <div class="panel">
+    <div class="panel-section">
+      <div class="panel-title">Node Stats</div>
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-value" id="stat-posts">0</div>
+          <div class="stat-label">Posts stored</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-peers">0</div>
+          <div class="stat-label">Active peers</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">Tor Status</div>
+      <div class="tor-info">
+        <div class="tor-row">
+          <span class="tor-key">Mode</span>
+          <span class="tor-val" id="tor-mode">—</span>
+        </div>
+        <div class="tor-row">
+          <span class="tor-key">SOCKS</span>
+          <span class="tor-val" id="tor-socks">—</span>
+        </div>
+        <div class="tor-row">
+          <span class="tor-key">Node ID</span>
+          <span class="tor-val" id="node-id-val">—</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">Active Peers</div>
+      <div id="panel-peer-list">
+        <div style="color:var(--text2);font-size:13px;">No peers yet</div>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">Your .onion Address</div>
+      <div class="onion-card">
+        <div class="onion-addr" id="panel-onion" style="cursor:pointer" onclick="copyOnion()" title="Click to copy">
+          Loading...
+        </div>
+        <div style="font-size:11px;color:var(--text2);margin-top:6px;">Share this so others can find you</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
