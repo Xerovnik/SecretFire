@@ -1,0 +1,13 @@
+packages:
+  "framer-motion": "For sleek, technical scroll animations and page transitions"
+  "lucide-react": "For technical and platform icons"
+
+images:
+  - path: "artifacts/ghostwire-site/public/images/cyber-bg.png"
+    description: "Abstract sleek cyberpunk background, dark deep navy and pitch black with glowing cyan wireframe nodes, subtle neon purple light leaks, high tech dark web aesthetic, geometric"
+    aspect_ratio: "16:9"
+
+notes:
+  - Fully static marketing and download site for GhostWire.
+  - No backend API connections required.
+  - Using a dark-mode only, cyberpunk/technical aesthetic.

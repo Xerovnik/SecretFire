@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "GhostWire Download Site"
+version = "1.0.0"
+id = "artifacts/ghostwire-site"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+localPort = 23082
+name = "web"
+paths = ["/"]
+
+[services.development]
+run = "pnpm --filter @workspace/ghostwire-site run dev"
+
+[services.env]
+PORT = "23082"
+BASE_PATH = "/"
+
+[services.production]
+build = ["pnpm", "--filter", "@workspace/ghostwire-site", "run", "build"]
+publicDir = "artifacts/ghostwire-site/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
