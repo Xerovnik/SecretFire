@@ -47,3 +47,19 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.venv/
+venv/
+
+# GhostWire runtime data (keys, DB, Tor state — never commit these)
+desktop-app/data/
+desktop-app/tor_data/
+*.db
+*.db-shm
+*.db-wal
