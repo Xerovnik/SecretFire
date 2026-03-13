@@ -90,7 +90,7 @@ export default function Home() {
         >
           <p style={{
             fontFamily: "'Cormorant Garamond', Georgia, serif",
-            fontSize: '19px',
+            fontSize: '28px',
             lineHeight: '2.0',
             color: 'rgba(255,255,255,0.055)',
             letterSpacing: '0.025em',
