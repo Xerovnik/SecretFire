@@ -1,4 +1,4 @@
-# GhostWire
+# SecretFire
 # Copyright (C) 2026 J. Zerovnik
 #
 # This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-GhostWire Message Protocol
+SecretFire Message Protocol
 
 Packet format (per fragment):
   [16 bytes] message_id

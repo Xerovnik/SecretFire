@@ -1,4 +1,4 @@
-# GhostWire
+# SecretFire
 # Copyright (C) 2026 J. Zerovnik
 #
 # This program is free software: you can redistribute it and/or modify
@@ -50,7 +50,7 @@ def create_app(tor_manager, gossip_manager, node_identity: dict) -> Flask:
         tor_status = tor_manager.status()
         stats = storage.get_stats()
         return jsonify({
-            "app": "GhostWire",
+            "app": "SecretFire",
             "version": "0.1.0",
             "tor": tor_status,
             "node_id": node_identity.get("node_id", "unknown"),

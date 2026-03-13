@@ -1,6 +1,6 @@
 kind = "web"
 previewPath = "/"
-title = "GhostWire Download Site"
+title = "SecretFire Download Site"
 version = "1.0.0"
 id = "artifacts/ghostwire-site"
 router = "path"

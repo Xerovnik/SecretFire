@@ -1,4 +1,4 @@
-# GhostWire
+# SecretFire
 # Copyright (C) 2026 J. Zerovnik
 #
 # This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-GhostWire — anonymous P2P microblogging over Tor
+SecretFire — anonymous P2P microblogging over Tor
 Entry point: starts Tor, initialises the node, launches the Flask server,
 and opens the browser.
 """
@@ -126,7 +126,7 @@ def main():
     browser_thread = threading.Thread(target=open_browser, args=(FLASK_PORT,), daemon=True)
     browser_thread.start()
 
-    logger.info(f"GhostWire running at http://127.0.0.1:{FLASK_PORT}")
+    logger.info(f"SecretFire running at http://127.0.0.1:{FLASK_PORT}")
     try:
         from waitress import serve
         serve(app, host=FLASK_HOST, port=FLASK_PORT)

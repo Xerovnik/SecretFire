@@ -1,4 +1,4 @@
-# GhostWire
+# SecretFire
 # Copyright (C) 2026 J. Zerovnik
 #
 # This program is free software: you can redistribute it and/or modify
@@ -56,7 +56,7 @@ def derive_session_key(x25519_private_b64, peer_x25519_public_b64):
     pub_key = X25519PublicKey.from_public_bytes(pub_bytes)
     shared = priv_key.exchange(pub_key)
 
-    hkdf = HKDF(algorithm=hashes.SHA256(), length=32, salt=None, info=b"ghostwire-session-v1")
+    hkdf = HKDF(algorithm=hashes.SHA256(), length=32, salt=None, info=b"secretfire-session-v1")
     return hkdf.derive(shared)
 
 

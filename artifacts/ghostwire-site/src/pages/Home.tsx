@@ -1,4 +1,4 @@
-// GhostWire
+// SecretFire
 // Copyright (C) 2026 J. Zerovnik
 //
 // This program is free software: you can redistribute it and/or modify
@@ -48,7 +48,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2 text-primary">
             <Network className="w-6 h-6" />
-            <span className="font-display font-bold text-xl tracking-widest uppercase">GhostWire</span>
+            <span className="font-display font-bold text-xl tracking-widest uppercase">SecretFire</span>
           </div>
           <div className="flex gap-4">
             <button 
@@ -150,7 +150,7 @@ export default function Home() {
               <span className="text-primary">//</span> EXECUTE PROTOCOL
             </h2>
             <p className="text-muted-foreground max-w-2xl mx-auto">
-              GhostWire operates entirely on your local machine, connecting to peers through hidden services to ensure untraceable communication.
+              SecretFire operates entirely on your local machine, connecting to peers through hidden services to ensure untraceable communication.
             </p>
           </div>
 
@@ -159,7 +159,7 @@ export default function Home() {
               {
                 step: "01",
                 title: "Install Node",
-                desc: "Run GhostWire locally. It spins up a lightweight Flask server and an embedded Tor instance automatically."
+                desc: "Run SecretFire locally. It spins up a lightweight Flask server and an embedded Tor instance automatically."
               },
               {
                 step: "02",
@@ -288,7 +288,7 @@ export default function Home() {
             <p className="text-muted-foreground">Prefer to run directly from source? Clone and execute.</p>
           </div>
           
-          <Terminal code={`git clone https://github.com/ghostwire/ghostwire.git\ncd ghostwire/desktop-app\npip install -r requirements.txt\npython main.py`} />
+          <Terminal code={`git clone https://github.com/secretfire/secretfire.git\ncd secretfire/desktop-app\npip install -r requirements.txt\npython main.py`} />
         </div>
       </section>
 
@@ -297,7 +297,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 flex flex-col items-center">
           <Network className="w-8 h-8 text-primary mb-6 opacity-50" />
           <p className="text-muted-foreground font-mono text-sm">
-            GHOSTWIRE v0.1.0 // ANONYMOUS P2P NETWORK
+            SECRETFIRE v0.1.0 // ANONYMOUS P2P NETWORK
           </p>
           <p className="text-muted-foreground/50 text-xs mt-2 max-w-md mx-auto">
             This software is provided "as is", without warranty of any kind. Use at your own risk. Stay safe out there.

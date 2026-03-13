@@ -1,4 +1,4 @@
-# GhostWire
+# SecretFire
 # Copyright (C) 2026 J. Zerovnik
 #
 # This program is free software: you can redistribute it and/or modify
@@ -17,10 +17,10 @@
 import os
 from pathlib import Path
 
-APP_NAME = "GhostWire"
+APP_NAME = "SecretFire"
 APP_VERSION = "0.1.0"
 
-DATA_DIR = Path.home() / ".ghostwire"
+DATA_DIR = Path.home() / ".secretfire"
 DB_PATH = DATA_DIR / "node.db"
 TOR_DATA_DIR = DATA_DIR / "tor_data"
 TOR_HIDDEN_SERVICE_DIR = DATA_DIR / "hidden_service"

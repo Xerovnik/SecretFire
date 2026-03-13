@@ -1,4 +1,4 @@
-// GhostWire
+// SecretFire
 // Copyright (C) 2026 J. Zerovnik
 //
 // This program is free software: you can redistribute it and/or modify
@@ -48,7 +48,7 @@ export function Terminal({ code }: TerminalProps) {
           <div className="w-3 h-3 rounded-full bg-emerald-500/80" />
         </div>
         <div className="font-mono text-xs text-muted-foreground tracking-widest">
-          GHOSTWIRE // LOCAL_INSTALL
+          SECRETFIRE // LOCAL_INSTALL
         </div>
         <button 
           onClick={handleCopy}
