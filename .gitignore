@@ -57,6 +57,9 @@ __pycache__/
 .venv/
 venv/
 
+# Replit attached assets (private/session files — never commit these)
+attached_assets/
+
 # GhostWire runtime data (keys, DB, Tor state — never commit these)
 desktop-app/data/
 desktop-app/tor_data/
