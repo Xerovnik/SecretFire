@@ -61,10 +61,6 @@ DataDirectory {TOR_DATA_DIR}
 HiddenServiceDir {TOR_HIDDEN_SERVICE_DIR}
 HiddenServicePort 80 127.0.0.1:{TOR_HIDDEN_SERVICE_PORT}
 Log notice stdout
-RelayBandwidthRate 100 KB
-RelayBandwidthBurst 200 KB
-ORPort auto
-ExitPolicy reject *:*
 """
         torrc_path.write_text(torrc_content.strip())
         return torrc_path
@@ -105,9 +101,13 @@ ExitPolicy reject *:*
         while time.time() - start < timeout:
             line = self.process.stdout.readline()
             if not line:
-                break
+                if self.process.poll() is not None:
+                    logger.warning(f"Tor process exited early (code {self.process.returncode})")
+                    break
+                time.sleep(0.1)
+                continue
             logger.debug(f"[Tor] {line.strip()}")
-            if "Bootstrapped 100%" in line or "Done" in line:
+            if "Bootstrapped 100%" in line:
                 logger.info("Tor bootstrapped successfully")
                 return
             if "Problem bootstrapping" in line:
