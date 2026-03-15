@@ -29,7 +29,7 @@ import logging
 from pathlib import Path
 from config import (
     TOR_DATA_DIR, TOR_HIDDEN_SERVICE_DIR,
-    TOR_SOCKS_PORT, TOR_CONTROL_PORT, TOR_HIDDEN_SERVICE_PORT,
+    TOR_SOCKS_PORT, TOR_HIDDEN_SERVICE_PORT,
     FLASK_PORT
 )
 
@@ -41,7 +41,6 @@ class TorManager:
         self.process = None
         self.onion_address = None
         self.socks_port = TOR_SOCKS_PORT
-        self.control_port = TOR_CONTROL_PORT
         self.is_running = False
         self.demo_mode = False
         self._lock = threading.Lock()
@@ -58,7 +57,6 @@ class TorManager:
         torrc_path = TOR_DATA_DIR / "torrc"
         torrc_content = f"""
 SocksPort {self.socks_port}
-ControlPort {self.control_port}
 DataDirectory {TOR_DATA_DIR}
 HiddenServiceDir {TOR_HIDDEN_SERVICE_DIR}
 HiddenServicePort 80 127.0.0.1:{TOR_HIDDEN_SERVICE_PORT}
