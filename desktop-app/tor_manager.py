@@ -51,7 +51,9 @@ class TorManager:
 
     def _write_torrc(self) -> Path:
         TOR_DATA_DIR.mkdir(parents=True, exist_ok=True)
+        TOR_DATA_DIR.chmod(0o700)
         TOR_HIDDEN_SERVICE_DIR.mkdir(parents=True, exist_ok=True)
+        TOR_HIDDEN_SERVICE_DIR.chmod(0o700)
 
         torrc_path = TOR_DATA_DIR / "torrc"
         torrc_content = f"""
@@ -102,11 +104,15 @@ Log notice stdout
             line = self.process.stdout.readline()
             if not line:
                 if self.process.poll() is not None:
+                    remaining = self.process.stdout.read()
+                    if remaining:
+                        for l in remaining.splitlines():
+                            logger.warning(f"[Tor] {l}")
                     logger.warning(f"Tor process exited early (code {self.process.returncode})")
                     break
                 time.sleep(0.1)
                 continue
-            logger.debug(f"[Tor] {line.strip()}")
+            logger.info(f"[Tor] {line.strip()}")
             if "Bootstrapped 100%" in line:
                 logger.info("Tor bootstrapped successfully")
                 return
