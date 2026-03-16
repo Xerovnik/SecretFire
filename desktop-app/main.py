@@ -40,6 +40,7 @@ logger = logging.getLogger("main")
 import storage
 import crypto_utils
 from tor_manager import TorManager
+from tor_updater import check_and_update, start_background_updater
 from gossip import GossipManager
 from api_server import create_app
 from config import (
@@ -108,9 +109,13 @@ def main():
     logger.info("Bootstrapping seed nodes...")
     bootstrap_seed_nodes()
 
+    logger.info("Checking Tor binary…")
+    check_and_update()
+
     logger.info("Starting Tor...")
     tor = TorManager()
     tor.start()
+    start_background_updater()
 
     if tor.demo_mode:
         logger.warning("Running in DEMO MODE — messages are NOT anonymous")
