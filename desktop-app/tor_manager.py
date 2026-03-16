@@ -39,18 +39,24 @@ logger = logging.getLogger("tor_manager")
 
 
 def _find_free_port(preferred: int) -> int:
-    """Return preferred port if free, otherwise bind to any free port."""
+    """Try preferred port first; fall back through 19150-19200 if it's taken."""
     for port in [preferred] + list(range(19150, 19200)):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             try:
                 s.bind(("127.0.0.1", port))
+                if port != preferred:
+                    logger.warning(
+                        f"Port {preferred} in use (system Tor?), using fallback port {port}"
+                    )
                 return port
             except OSError:
                 continue
-    # Last resort: let the OS pick
+    # Last resort: let the OS assign any free port
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+        port = s.getsockname()[1]
+        logger.warning(f"All preferred ports taken, using OS-assigned port {port}")
+        return port
 
 
 class TorManager:
