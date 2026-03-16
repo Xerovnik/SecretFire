@@ -79,11 +79,21 @@ class TorManager:
             return system, os.environ.copy()
         return None, {}
 
+    def _clear_stale_lock(self):
+        lock = TOR_DATA_DIR / "lock"
+        if lock.exists():
+            try:
+                lock.unlink()
+                logger.info("Removed stale Tor lock file")
+            except OSError as e:
+                logger.warning(f"Could not remove stale lock file: {e}")
+
     def _write_torrc(self) -> Path:
         TOR_DATA_DIR.mkdir(parents=True, exist_ok=True)
         TOR_DATA_DIR.chmod(0o700)
         TOR_HIDDEN_SERVICE_DIR.mkdir(parents=True, exist_ok=True)
         TOR_HIDDEN_SERVICE_DIR.chmod(0o700)
+        self._clear_stale_lock()
 
         torrc_path = TOR_DATA_DIR / "torrc"
         torrc_content = f"""
