@@ -123,8 +123,8 @@ def save_peer(onion_address):
     conn = _conn()
     now = _now()
     conn.execute(
-        "INSERT INTO peers (onion_address, first_seen, last_seen) VALUES (?,?,?) "
-        "ON CONFLICT(onion_address) DO UPDATE SET last_seen=excluded.last_seen",
+        "INSERT INTO peers (onion_address, first_seen, last_seen, is_active) VALUES (?,?,?,1) "
+        "ON CONFLICT(onion_address) DO UPDATE SET last_seen=excluded.last_seen, is_active=1",
         (onion_address, now, now),
     )
     conn.commit()
