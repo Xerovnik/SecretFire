@@ -30,7 +30,7 @@ import logging
 from pathlib import Path
 from config import (
     TOR_DATA_DIR, TOR_HIDDEN_SERVICE_DIR,
-    TOR_SOCKS_PORT, TOR_HIDDEN_SERVICE_PORT,
+    TOR_SOCKS_PORT,
     FLASK_PORT
 )
 from tor_updater import get_bundled_tor_path, get_tor_env
@@ -100,7 +100,7 @@ class TorManager:
 SocksPort {self.socks_port}
 DataDirectory {TOR_DATA_DIR}
 HiddenServiceDir {TOR_HIDDEN_SERVICE_DIR}
-HiddenServicePort 80 127.0.0.1:{TOR_HIDDEN_SERVICE_PORT}
+HiddenServicePort 80 127.0.0.1:{FLASK_PORT}
 Log notice stdout
 Sandbox 0
 """
