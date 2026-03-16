@@ -58,10 +58,14 @@ class GossipManager:
         self._stop_event.set()
 
     def _run_loop(self):
+        cycle = 0
         while not self._stop_event.is_set():
             try:
-                self._sync_all_peers()
+                # Every 5th cycle also retry inactive peers so they can come back
+                include_inactive = (cycle % 5 == 0)
+                self._sync_all_peers(include_inactive=include_inactive)
                 self._process_complete_fragments()
+                cycle += 1
             except Exception as e:
                 logger.error(f"Gossip loop error: {e}")
             self._stop_event.wait(GOSSIP_INTERVAL)
@@ -74,8 +78,8 @@ class GossipManager:
         session.timeout = timeout
         return session
 
-    def _sync_all_peers(self):
-        peers = storage.get_peers(active_only=True)
+    def _sync_all_peers(self, include_inactive=False):
+        peers = storage.get_peers(active_only=not include_inactive)
         for peer in peers:
             addr = peer["onion_address"]
             if addr in ("demo-mode-no-tor.local", "demo-mode-tor-failed.local", "unknown.onion"):
