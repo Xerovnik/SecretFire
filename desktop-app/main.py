@@ -28,6 +28,7 @@ import threading
 import webbrowser
 import base64
 import os
+import socket
 from pathlib import Path
 
 logging.basicConfig(
@@ -81,11 +82,54 @@ def bootstrap_seed_nodes():
         storage.save_peer(addr)
 
 
-def open_browser(port: int):
-    time.sleep(2.5)
+def wait_for_server(port: int, timeout: float = 15.0) -> bool:
+    """Block until the Flask server is accepting connections or timeout."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.5):
+                return True
+        except OSError:
+            time.sleep(0.1)
+    return False
+
+
+def start_server(app) -> threading.Thread:
+    """Start the Flask/Waitress server in a background daemon thread."""
+    def _run():
+        try:
+            from waitress import serve
+            serve(app, host=FLASK_HOST, port=FLASK_PORT)
+        except ImportError:
+            app.run(host=FLASK_HOST, port=FLASK_PORT, debug=False, use_reloader=False)
+
+    t = threading.Thread(target=_run, daemon=True, name="flask-server")
+    t.start()
+    return t
+
+
+def open_window(port: int):
+    """
+    Open the UI in a standalone native window via pywebview.
+    Falls back to the system browser if pywebview is unavailable
+    (e.g. missing system WebKit on some Linux installs).
+    """
     url = f"http://127.0.0.1:{port}"
-    logger.info(f"Opening browser: {url}")
-    webbrowser.open(url)
+    try:
+        import webview
+        logger.info("Opening SecretFire window…")
+        window = webview.create_window(
+            "SecretFire",
+            url,
+            width=1200,
+            height=800,
+            min_size=(800, 600),
+            resizable=True,
+        )
+        webview.start()
+    except Exception as exc:
+        logger.warning(f"pywebview unavailable ({exc}) — falling back to browser.")
+        webbrowser.open(url)
 
 
 def main():
@@ -127,15 +171,13 @@ def main():
 
     app = create_app(tor, gossip, identity)
 
-    browser_thread = threading.Thread(target=open_browser, args=(FLASK_PORT,), daemon=True)
-    browser_thread.start()
-
     logger.info(f"SecretFire running at http://127.0.0.1:{FLASK_PORT}")
-    try:
-        from waitress import serve
-        serve(app, host=FLASK_HOST, port=FLASK_PORT)
-    except ImportError:
-        app.run(host=FLASK_HOST, port=FLASK_PORT, debug=False, use_reloader=False)
+    start_server(app)
+
+    if not wait_for_server(FLASK_PORT):
+        logger.warning("Server did not become ready in time — opening anyway.")
+
+    open_window(FLASK_PORT)
 
 
 if __name__ == "__main__":
