@@ -130,6 +130,13 @@ def open_window(port: int):
     except Exception as exc:
         logger.warning(f"pywebview unavailable ({exc}) — falling back to browser.")
         webbrowser.open(url)
+        # Keep the process alive — Flask runs in a daemon thread so the
+        # whole process would exit the moment main() returns otherwise.
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            pass
 
 
 def main():
@@ -140,7 +147,7 @@ def main():
  (__  )  __/ /__/ /  /  __/ /_/ __/ / / /  /  __/
 /____/\___/\___/_/   \___/\__/_/   /_/_/   \___/
 
-  Anonymous P2P Microblogging  v0.1.1  (YOU SHALL NOT PASS!!! )
+  Anonymous P2P Microblogging  v0.1.3  (YOU SHALL NOT PASS!!! )
     """)
 
     logger.info("Initialising storage...")
