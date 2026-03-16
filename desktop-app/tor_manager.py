@@ -32,6 +32,7 @@ from config import (
     TOR_SOCKS_PORT, TOR_HIDDEN_SERVICE_PORT,
     FLASK_PORT
 )
+from tor_updater import get_bundled_tor_path, get_tor_env
 
 logger = logging.getLogger("tor_manager")
 
@@ -45,8 +46,16 @@ class TorManager:
         self.demo_mode = False
         self._lock = threading.Lock()
 
-    def _find_tor(self) -> str | None:
-        return shutil.which("tor")
+    def _find_tor(self) -> tuple[str | None, dict]:
+        bundled = get_bundled_tor_path()
+        if bundled:
+            logger.info(f"Using bundled Tor binary: {bundled}")
+            return str(bundled), get_tor_env()
+        system = shutil.which("tor")
+        if system:
+            logger.info(f"Using system Tor binary: {system}")
+            return system, os.environ.copy()
+        return None, {}
 
     def _write_torrc(self) -> Path:
         TOR_DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -66,7 +75,7 @@ Log notice stdout
         return torrc_path
 
     def start(self) -> bool:
-        tor_bin = self._find_tor()
+        tor_bin, tor_env = self._find_tor()
         if not tor_bin:
             logger.warning("Tor not found — running in demo mode (no anonymity)")
             self.demo_mode = True
@@ -81,6 +90,7 @@ Log notice stdout
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
+                env=tor_env,
             )
             logger.info(f"Tor started with PID {self.process.pid}")
             self._wait_for_bootstrap()
