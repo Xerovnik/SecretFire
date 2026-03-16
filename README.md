@@ -14,8 +14,7 @@ SecretFire is a decentralized, censorship-resistant messaging platform. It runs 
 - **Gossip protocol.** Posts are broadcast as encrypted message fragments that propagate peer-to-peer across the network.
 - **AES-256-GCM encryption.** Message content is encrypted end-to-end. Only intended recipients can reassemble fragments.
 - **Signed posts.** Ed25519 signatures ensure posts genuinely originate from their claimed author.
-
-If Tor is not installed, SecretFire falls back to a local demo mode so you can still explore the interface.
+- **Bundled Tor.** SecretFire downloads the latest stable Tor binary directly from the Tor Project on first run and keeps it up to date automatically. No separate Tor installation is required.
 
 ---
 
@@ -29,13 +28,11 @@ Pre-built binaries are available on the [Releases](https://github.com/Xerovnik/S
 | macOS    | `SecretFire-macos` |
 | Linux    | `SecretFire-linux` |
 
-> **Note:** For full anonymity, [install Tor](https://www.torproject.org/download/) before running SecretFire. Without it, the app operates in demo mode with no network anonymity.
-
 ---
 
 ## Run from Source
 
-**Requirements:** Python 3.10+, pip, Tor (optional but recommended)
+**Requirements:** Python 3.10+, pip
 
 ```bash
 git clone https://github.com/Xerovnik/SecretFire.git
@@ -44,7 +41,19 @@ pip install -r requirements.txt
 python main.py
 ```
 
-The app will open in your browser automatically. Your `.onion` address is displayed in the sidebar once Tor connects.
+The app opens in its own standalone window. Your `.onion` address is displayed in the sidebar once Tor connects.
+
+On first run, SecretFire will automatically download the latest Tor binary from the Tor Project and verify its integrity before starting. An internet connection is required for this step.
+
+### Linux — standalone window dependency
+
+On Linux the standalone window requires a system package that pip cannot install. Run this once before starting the app:
+
+```bash
+sudo apt install python3-gi gir1.2-webkit2-4.0
+```
+
+If this package is not available, the app will fall back to opening in your default browser instead — everything will still work.
 
 ---
 
@@ -67,6 +76,7 @@ The binary will be in `desktop-app/dist/`. GitHub Actions automatically builds f
 desktop-app/
 ├── main.py          — entry point, orchestrates startup
 ├── tor_manager.py   — manages the embedded Tor process and hidden service
+├── tor_updater.py   — downloads and verifies the Tor binary from the Tor Project
 ├── gossip.py        — P2P gossip protocol and peer sync
 ├── crypto_utils.py  — Ed25519 signing, AES-256-GCM encryption
 ├── protocol.py      — message format and fragment handling
@@ -81,10 +91,10 @@ desktop-app/
 ## Privacy Notes
 
 - SecretFire never connects to any server outside of the Tor network.
+- The Tor binary is downloaded directly from the Tor Project and verified by SHA-256 checksum before use.
 - No telemetry, no analytics, no crash reporting.
 - Your keypair and posts are stored locally only.
 - Peers know your `.onion` address but not your IP.
-- Running without Tor means peers can see your IP — use Tor.
 
 ---
 
