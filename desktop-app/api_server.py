@@ -136,7 +136,8 @@ def create_app(tor_manager, gossip_manager, node_identity: dict) -> Flask:
     @app.route("/api/sync-now", methods=["POST"])
     def sync_now():
         try:
-            gossip_manager._sync_all_peers()
+            # Always try all peers on manual sync, not just active ones
+            gossip_manager._sync_all_peers(include_inactive=True)
             gossip_manager._process_complete_fragments()
             return jsonify({"success": True, "stats": storage.get_stats()})
         except Exception as e:
