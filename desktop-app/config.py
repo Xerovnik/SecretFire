@@ -24,6 +24,7 @@ DATA_DIR = Path.home() / ".secretfire"
 DB_PATH = DATA_DIR / "node.db"
 TOR_DATA_DIR = DATA_DIR / "tor_data"
 TOR_HIDDEN_SERVICE_DIR = DATA_DIR / "hidden_service"
+TOR_BIN_DIR = DATA_DIR / "tor_bin"
 KEY_FILE = DATA_DIR / "node_keys.json"
 
 FLASK_PORT = int(os.environ.get("PORT", 7474))
