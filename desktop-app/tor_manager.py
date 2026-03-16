@@ -23,6 +23,7 @@ Falls back gracefully to a no-Tor demo mode so the app works without Tor install
 import os
 import time
 import shutil
+import socket
 import threading
 import subprocess
 import logging
@@ -37,11 +38,26 @@ from tor_updater import get_bundled_tor_path, get_tor_env
 logger = logging.getLogger("tor_manager")
 
 
+def _find_free_port(preferred: int) -> int:
+    """Return preferred port if free, otherwise bind to any free port."""
+    for port in [preferred] + list(range(19150, 19200)):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("127.0.0.1", port))
+                return port
+            except OSError:
+                continue
+    # Last resort: let the OS pick
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
 class TorManager:
     def __init__(self):
         self.process = None
         self.onion_address = None
-        self.socks_port = TOR_SOCKS_PORT
+        self.socks_port = _find_free_port(TOR_SOCKS_PORT)
         self.is_running = False
         self.demo_mode = False
         self._lock = threading.Lock()
@@ -70,6 +86,7 @@ DataDirectory {TOR_DATA_DIR}
 HiddenServiceDir {TOR_HIDDEN_SERVICE_DIR}
 HiddenServicePort 80 127.0.0.1:{TOR_HIDDEN_SERVICE_PORT}
 Log notice stdout
+Sandbox 0
 """
         torrc_path.write_text(torrc_content.strip())
         return torrc_path
