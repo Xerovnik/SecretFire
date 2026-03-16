@@ -301,7 +301,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 flex flex-col items-center">
           <Network className="w-8 h-8 text-primary mb-6 opacity-50" />
           <p className="text-muted-foreground font-mono text-sm">
-            SECRETFIRE v0.1.4 // ANONYMOUS P2P NETWORK
+            SECRETFIRE v0.1.5 // ANONYMOUS P2P NETWORK
           </p>
           <p className="text-muted-foreground/50 text-xs mt-2 max-w-md mx-auto">
             This software is provided "as is", without warranty of any kind. Use at your own risk. Stay safe out there.
