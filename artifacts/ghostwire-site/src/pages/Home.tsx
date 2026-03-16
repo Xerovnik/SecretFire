@@ -158,8 +158,8 @@ export default function Home() {
             {[
               {
                 step: "01",
-                title: "Install Node",
-                desc: "Run SecretFire locally. It spins up a lightweight Flask server and an embedded Tor instance automatically."
+                title: "Download & Run",
+                desc: "Download the binary for your OS. On macOS and Linux, run chmod +x on the file first. No installation needed — Tor is bundled inside."
               },
               {
                 step: "02",
@@ -255,23 +255,27 @@ export default function Home() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
-              { os: "Windows", ext: ".exe", icon: <Monitor className="w-8 h-8 mb-4 text-primary" /> },
-              { os: "macOS", ext: ".dmg", icon: <Monitor className="w-8 h-8 mb-4 text-primary" /> },
-              { os: "Linux", ext: ".AppImage", icon: <Terminal code="" className="hidden" /> || <Monitor className="w-8 h-8 mb-4 text-primary" /> },
-              { os: "Source", ext: "GitHub", icon: <Github className="w-8 h-8 mb-4 text-primary" />, variant: "outline" as const }
+              { os: "Windows", label: "Download .exe", href: "https://github.com/Xerovnik/SecretFire/releases/latest/download/SecretFire-windows.exe", icon: <Monitor className="w-8 h-8 mb-4 text-primary" /> },
+              { os: "macOS", label: "Download binary", href: "https://github.com/Xerovnik/SecretFire/releases/latest/download/SecretFire-macos", icon: <Monitor className="w-8 h-8 mb-4 text-primary" />, note: "chmod +x then run" },
+              { os: "Linux", label: "Download ELF binary", href: "https://github.com/Xerovnik/SecretFire/releases/latest/download/SecretFire-linux", icon: <Monitor className="w-8 h-8 mb-4 text-primary" />, note: "chmod +x then run" },
+              { os: "Source", label: "View Repository", href: "https://github.com/Xerovnik/SecretFire", icon: <Github className="w-8 h-8 mb-4 text-primary" />, outline: true }
             ].map((item, i) => (
               <motion.a
                 key={i}
-                href="#"
-                onClick={(e) => e.preventDefault()}
+                href={item.href}
+                target="_blank"
+                rel="noopener noreferrer"
                 whileHover={{ y: -5 }}
-                className={`flex flex-col items-center justify-center p-8 border ${item.variant === 'outline' ? 'border-primary/50 hover:bg-primary/10' : 'border-border bg-background hover:border-primary'} transition-all group`}
+                className={`flex flex-col items-center justify-center p-8 border ${item.outline ? 'border-primary/50 hover:bg-primary/10' : 'border-border bg-background hover:border-primary'} transition-all group`}
               >
                 {item.icon}
                 <h3 className="font-display text-lg font-bold mb-1">{item.os}</h3>
                 <p className="text-sm text-muted-foreground group-hover:text-primary transition-colors">
-                  {item.ext === 'GitHub' ? 'View Repository' : `Download ${item.ext}`}
+                  {item.label}
                 </p>
+                {item.note && (
+                  <p className="text-xs text-muted-foreground/60 mt-1 font-mono">{item.note}</p>
+                )}
               </motion.a>
             ))}
           </div>
@@ -288,7 +292,7 @@ export default function Home() {
             <p className="text-muted-foreground">Prefer to run directly from source? Clone and execute.</p>
           </div>
           
-          <Terminal code={`git clone https://github.com/secretfire/secretfire.git\ncd secretfire/desktop-app\npip install -r requirements.txt\npython main.py`} />
+          <Terminal code={`git clone https://github.com/Xerovnik/SecretFire.git\ncd SecretFire/desktop-app\npip install -r requirements.txt\npython main.py`} />
         </div>
       </section>
 
@@ -297,7 +301,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 flex flex-col items-center">
           <Network className="w-8 h-8 text-primary mb-6 opacity-50" />
           <p className="text-muted-foreground font-mono text-sm">
-            SECRETFIRE v0.1.0 // ANONYMOUS P2P NETWORK
+            SECRETFIRE v0.1.1 // ANONYMOUS P2P NETWORK
           </p>
           <p className="text-muted-foreground/50 text-xs mt-2 max-w-md mx-auto">
             This software is provided "as is", without warranty of any kind. Use at your own risk. Stay safe out there.
