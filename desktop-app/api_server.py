@@ -20,6 +20,7 @@ Also exposes /fragment and /api/sync for peer-to-peer communication.
 """
 
 import json
+import re
 import uuid
 import time
 import logging
@@ -272,7 +273,9 @@ def create_app(tor_manager, gossip_manager, node_identity: dict) -> Flask:
                 "ed25519_private": identity.get("ed25519_private"),
             }
             content = json.dumps(backup, indent=2)
-            default_name = f"secretfire-identity-{(identity.get('node_id') or '')[:8]}.json"
+            raw_id = (identity.get('node_id') or '')
+            safe_id = re.sub(r'[^a-zA-Z0-9_-]', '', raw_id)[:8]
+            default_name = f"secretfire-identity-{safe_id}.json"
 
             saved_path = _save_file_dialog(default_name, content)
             if saved_path is None:

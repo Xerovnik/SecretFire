@@ -18,7 +18,7 @@ import os
 from pathlib import Path
 
 APP_NAME = "SecretFire"
-APP_VERSION = "0.1.15"
+APP_VERSION = "0.1.16"
 
 DATA_DIR = Path.home() / ".secretfire"
 DB_PATH = DATA_DIR / "node.db"

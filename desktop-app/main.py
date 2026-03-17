@@ -153,7 +153,7 @@ def _make_tray_image():
         return None
 
 
-def start_tray(app_url: str, tor_manager=None):
+def start_tray(app_url: str, tor_manager=None, window_ref=None):
     """Start the system tray icon in a background thread."""
     try:
         import pystray
@@ -163,6 +163,13 @@ def start_tray(app_url: str, tor_manager=None):
             return
 
         def open_app(icon, item):
+            win = window_ref[0] if window_ref else None
+            if win is not None:
+                try:
+                    win.show()
+                    return
+                except Exception as e:
+                    logger.warning(f"webview show() failed: {e}")
             webbrowser.open(app_url)
 
         def quit_app(icon, item):
@@ -192,7 +199,7 @@ def start_tray(app_url: str, tor_manager=None):
         logger.warning(f"System tray failed to start: {e}")
 
 
-def open_window(port: int):
+def open_window(port: int, window_ref=None):
     url = f"http://127.0.0.1:{port}"
     try:
         import webview
@@ -205,9 +212,23 @@ def open_window(port: int):
             min_size=(900, 650),
             resizable=True,
         )
+        if window_ref is not None:
+            window_ref[0] = window
+
+        def _on_closing():
+            """Hide to tray instead of destroying the window."""
+            window.hide()
+            return False  # cancel the close
+
+        try:
+            window.events.closing += _on_closing
+        except Exception:
+            pass  # older pywebview — window will close normally
+
         webview.start()
-        # After webview window closes, process stays alive via tray
-        logger.info("Window closed — app running in system tray")
+        # webview.start() only returns if all windows are destroyed
+        # (shouldn't happen with the hiding handler, but guard anyway)
+        logger.info("webview exited — app still alive via tray")
         while True:
             time.sleep(5)
     except Exception as exc:
@@ -267,9 +288,10 @@ def main():
         logger.warning("Server did not become ready in time — opening anyway.")
 
     url = f"http://127.0.0.1:{FLASK_PORT}"
-    start_tray(url, tor)
+    window_ref = [None]
+    start_tray(url, tor, window_ref)
     _hide_console_window()
-    open_window(FLASK_PORT)
+    open_window(FLASK_PORT, window_ref)
 
 
 if __name__ == "__main__":
