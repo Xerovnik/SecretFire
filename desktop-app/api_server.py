@@ -88,14 +88,14 @@ def _prompt_import_password(title: str, message: str, confirm: bool = True) -> s
         dlg.attributes("-topmost", True)
         frame = tk.Frame(dlg, padx=24, pady=16)
         frame.pack(fill="both", expand=True)
-        tk.Label(frame, text=message, wraplength=340, justify="left", pady=4).pack(anchor="w")
-        tk.Label(frame, text="Password:", pady=(10, 2)).pack(anchor="w")
+        tk.Label(frame, text=message, wraplength=340, justify="left").pack(anchor="w", pady=4)
+        tk.Label(frame, text="Password:").pack(anchor="w", pady=(10, 2))
         pw_entry = tk.Entry(frame, show="*", width=38)
         pw_entry.pack(fill="x")
         pw_entry.focus_set()
         pw2_entry = None
         if confirm:
-            tk.Label(frame, text="Confirm password:", pady=(8, 2)).pack(anchor="w")
+            tk.Label(frame, text="Confirm password:").pack(anchor="w", pady=(8, 2))
             pw2_entry = tk.Entry(frame, show="*", width=38)
             pw2_entry.pack(fill="x")
 
