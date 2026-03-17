@@ -69,3 +69,21 @@ desktop-app/tor_data/
 
 # Tor bundle — pre-downloaded during CI, never commit platform binaries
 desktop-app/tor_bundle/
+
+# Local development notes — not for public repo
+todo.txt
+
+# Replit platform internals — never commit these
+.replit
+.replitignore
+replit.md
+main.py
+pyproject.toml
+uv.lock
+artifacts/api-server/
+artifacts/mockup-sandbox/
+lib/
+scripts/
+
+# Old/stale build specs
+desktop-app/ghostwire.spec
