@@ -6,15 +6,19 @@ SecretFire is a decentralized, censorship-resistant messaging platform. It runs 
 
 ---
 
-## How It Works
+## Features
 
 - **No central server.** The network exists only as long as nodes are online and communicating.
 - **Tor hidden services.** Your IP address is never revealed. You are identified only by your `.onion` address.
-- **Ed25519 identity.** Your identity is cryptographic. A keypair is generated locally on first run and never leaves your machine.
+- **Ed25519 identity.** Your identity is cryptographic. A keypair is generated locally on first run and never leaves your machine, stored encrypted at rest with Argon2id + AES-256-GCM.
 - **Gossip protocol.** Posts are broadcast as encrypted message fragments that propagate peer-to-peer across the network.
 - **AES-256-GCM encryption.** Message content is encrypted end-to-end. Only intended recipients can reassemble fragments.
 - **Signed posts.** Ed25519 signatures ensure posts genuinely originate from their claimed author.
+- **Signed peer lists.** Outbound peer lists are Ed25519-signed. Inbound lists are verified before peers are accepted, preventing Sybil peer injection.
+- **Challenge-response peer authentication.** Each peer must prove ownership of their Ed25519 keypair via a challenge-response handshake. Pubkey mismatches from known addresses are flagged as probable impersonation attempts.
+- **Tor sandbox hardening (Linux).** Tor runs inside a seccomp syscall sandbox on Linux. If the kernel rejects it, the node automatically retries without the sandbox. `OnionTrafficOnly` blocks clearnet leaks. `IsolateDestAddr` gives each peer its own Tor circuit.
 - **Bundled Tor.** SecretFire downloads the latest stable Tor binary directly from the Tor Project on first run and keeps it up to date automatically. No separate Tor installation is required.
+- **Message padding.** Plaintext is padded to fixed bucket sizes before fragmentation to resist traffic analysis.
 
 ---
 
@@ -25,8 +29,8 @@ Pre-built binaries are available on the [Releases](https://github.com/Xerovnik/S
 | Platform | File |
 |----------|------|
 | Windows  | `SecretFire-windows.exe` |
-| macOS    | `SecretFire-macos` |
-| Linux    | `SecretFire-linux` |
+| macOS    | `SecretFire-macos` (chmod +x first) |
+| Linux    | `SecretFire-linux` (chmod +x first) |
 
 ---
 
@@ -75,16 +79,90 @@ The binary will be in `desktop-app/dist/`. GitHub Actions automatically builds f
 ```
 desktop-app/
 ├── main.py          — entry point, orchestrates startup
-├── tor_manager.py   — manages the embedded Tor process and hidden service
+├── tor_manager.py   — manages the embedded Tor process, sandbox fallback,
+│                      IsolateDestAddr, OnionTrafficOnly
 ├── tor_updater.py   — downloads and verifies the Tor binary from the Tor Project
-├── gossip.py        — P2P gossip protocol and peer sync
-├── crypto_utils.py  — Ed25519 signing, AES-256-GCM encryption
-├── protocol.py      — message format and fragment handling
-├── storage.py       — local post and peer storage
-├── api_server.py    — Flask REST API served to the local UI
-├── config.py        — ports, paths, and constants
-└── web/             — local frontend (HTML/CSS/JS)
+├── gossip.py        — P2P gossip loop, broadcast key rotation, signed peer lists,
+│                      challenge-response integration
+├── peer_auth.py     — Ed25519 challenge-response authenticator
+├── protocol.py      — message padding, fragmentation, HMAC, reassembly
+├── crypto_utils.py  — Ed25519 signing, AES-256-GCM encryption, HMAC-SHA256
+├── identity.py      — Argon2id + AES-256-GCM encrypted identity storage
+├── storage.py       — SQLite3 schema, safe migrations, CRUD helpers
+├── api_server.py    — Flask REST API (localhost only)
+├── config.py        — ports, paths, APP_VERSION
+└── web/             — local frontend (HTML/CSS/vanilla JS)
 ```
+
+---
+
+## Cryptography
+
+| Primitive | Algorithm | Use |
+|-----------|-----------|-----|
+| Signing | Ed25519 (RFC 8032) | Posts, peer lists, challenge-response |
+| Encryption | AES-256-GCM | Message fragments |
+| Key derivation | Argon2id (RFC 9106) | Identity file encryption |
+| Integrity | HMAC-SHA256 (truncated 8B) | Per-fragment packet MAC |
+
+### Identity storage format
+
+```
+[16 bytes]  Argon2id salt  — random, not secret
+[12 bytes]  AES-GCM nonce  — random per save
+[ N bytes]  AES-GCM ciphertext (JSON payload + 16-byte GCM tag)
+```
+
+Argon2id parameters: `time_cost=3`, `memory_cost=65536 KiB`, `parallelism=4`.
+
+### Message fragment packet
+
+```
+[16 bytes]  message_id       — shared across all fragments
+[ 2 bytes]  seq_num          — big-endian uint16
+[ 2 bytes]  total_parts      — big-endian uint16
+[ 8 bytes]  timestamp        — big-endian uint64 (Unix epoch)
+[ 8 bytes]  HMAC-SHA256[:8]  — over header + encrypted payload
+[ N bytes]  AES-256-GCM blob — encrypted fragment (≤ 460 bytes)
+```
+
+AAD per fragment: `msg_id (16B) ‖ seq_num (2B BE) ‖ total_parts (2B BE)` — binds ciphertext to its position, preventing reordering attacks.
+
+---
+
+## Peer Authentication Protocol
+
+Challenge-response runs over two sync cycles:
+
+**Cycle 1 — challenge issuance**
+```
+Node A → Node B   POST /api/sync  { from, node_pubkey }
+Node B → Node A   200 OK          { ..., auth_challenge: "<32-byte nonce b64>" }
+```
+
+**Cycle 2 — response & verification**
+```
+Node A → Node B   POST /api/sync  { from, node_pubkey, challenge_response: "<Ed25519 sig>" }
+
+Node B verifies:
+  message = JSON.dumps({"challenge": nonce_b64, "peer": "a.onion"}, sort_keys=True)
+  ed25519_verify(message, challenge_response, node_pubkey)
+  → success: auth_verified = 1, pubkey locked in DB
+  → failure: warning logged, peer stays Unverified
+```
+
+Once verified, a peer's public key is locked in the local database. Any future connection from the same `.onion` address using a different key is flagged as a probable impersonation attempt.
+
+---
+
+## Tor Security
+
+| Feature | torrc Directive | Effect |
+|---------|----------------|--------|
+| Per-peer circuits | `IsolateDestAddr` | Each `.onion` peer gets its own Tor circuit |
+| Clearnet blocking | `OnionTrafficOnly` | Non-onion traffic rejected at SOCKS port |
+| Syscall sandbox | `Sandbox 1` (Linux) | seccomp filtering on the Tor process |
+| Auto-fallback | bootstrap monitor | Retries with `Sandbox 0` if kernel rejects |
 
 ---
 
@@ -95,6 +173,23 @@ desktop-app/
 - No telemetry, no analytics, no crash reporting.
 - Your keypair and posts are stored locally only.
 - Peers know your `.onion` address but not your IP.
+
+---
+
+## Changelog
+
+| Version | Changes |
+|---------|---------|
+| v0.1.22 | Challenge-response peer authentication; pubkey locking; Verified/Unverified badge in UI |
+| v0.1.21 | Tor sandbox auto-fallback; IsolateDestAddr; OnionTrafficOnly; sandbox status in UI |
+| v0.1.20 | Fixed false "update available" banner; version bumping discipline established |
+| v0.1.19 | Signed peer lists (Ed25519); broadcast key rotation; fragment rate limiting |
+
+---
+
+## Technical Specification
+
+Full protocol details, wire formats, and security boundary documentation are available on the [SecretFire website](https://ghostwire-site.xerovnik.repl.co/specs).
 
 ---
 
