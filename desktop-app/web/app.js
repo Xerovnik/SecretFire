@@ -523,7 +523,82 @@ function autoResize(el) {
   el.style.height = Math.min(el.scrollHeight, 120) + "px";
 }
 
-/* ── Bootstrap ───────────────────────────────────────────────────────── */
+/* ── Auto-update ─────────────────────────────────────────────────────── */
+let _updateState = "idle"; // idle | downloading | ready | error
+
+async function checkForUpdates() {
+  try {
+    const r = await apiFetch("/api/update/check");
+    if (r && r.update_available && r.download_url) {
+      const lbl = document.getElementById("update-label");
+      if (lbl) lbl.textContent = `v${r.latest} available — update ready`;
+      document.getElementById("update-banner").style.display = "flex";
+    }
+  } catch (_) { /* silent — don't bother the user if the check fails */ }
+}
+
+async function handleUpdateBtn() {
+  if (_updateState === "idle") {
+    await startUpdateDownload();
+  } else if (_updateState === "ready") {
+    await applyUpdate();
+  }
+}
+
+async function startUpdateDownload() {
+  const btn = document.getElementById("update-action-btn");
+  const progressWrap = document.getElementById("update-progress-wrap");
+  btn.disabled = true;
+  btn.textContent = "Starting…";
+  progressWrap.style.display = "flex";
+  _updateState = "downloading";
+
+  try {
+    await apiFetch("/api/update/download", { method: "POST" });
+  } catch (e) {
+    toast("Update download failed to start: " + e.message, "error");
+    btn.disabled = false; btn.textContent = "Download";
+    _updateState = "idle";
+    return;
+  }
+
+  const poll = setInterval(async () => {
+    try {
+      const s = await apiFetch("/api/update/progress");
+      const fill = document.getElementById("update-progress-fill");
+      const pct  = document.getElementById("update-progress-pct");
+      const lbl  = document.getElementById("update-label");
+      if (fill) fill.style.width = s.progress + "%";
+      if (pct)  pct.textContent  = s.progress + "%";
+
+      if (s.status === "ready") {
+        clearInterval(poll);
+        _updateState = "ready";
+        if (lbl) lbl.textContent = "Update downloaded — click to apply";
+        btn.disabled = false;
+        btn.textContent = "Apply & Restart";
+        toast("Update downloaded. Click 'Apply & Restart' when ready.", "success");
+      } else if (s.status === "error") {
+        clearInterval(poll);
+        _updateState = "idle";
+        btn.disabled = false; btn.textContent = "Retry";
+        toast("Update failed: " + (s.error || "unknown error"), "error");
+      }
+    } catch (_) {}
+  }, 600);
+}
+
+async function applyUpdate() {
+  const btn = document.getElementById("update-action-btn");
+  const lbl = document.getElementById("update-label");
+  btn.disabled = true;
+  if (lbl) lbl.textContent = "Restarting…";
+  try {
+    await apiFetch("/api/update/apply", { method: "POST" });
+  } catch (_) { /* app exits — connection drops, that's expected */ }
+}
+
+/* ── Boot ────────────────────────────────────────────────────────────── */
 async function init() {
   await pollStatus();
   await Promise.all([pollPosts(), pollPeers()]);
@@ -532,6 +607,8 @@ async function init() {
   setInterval(pollPeers,  15000);
   setInterval(pollLogs,   1500);
   pollLogs();
+  // Check for updates 5 s after boot so the UI is already loaded
+  setTimeout(checkForUpdates, 5000);
 }
 
 init();

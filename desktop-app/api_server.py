@@ -23,6 +23,7 @@ import json
 import uuid
 import time
 import logging
+import os
 from pathlib import Path
 from flask import Flask, jsonify, request, send_from_directory, send_file
 from flask_cors import CORS
@@ -328,6 +329,71 @@ def create_app(tor_manager, gossip_manager, node_identity: dict) -> Flask:
             return jsonify({"success": True, "stats": storage.get_stats()})
         except Exception as e:
             return jsonify({"error": str(e)}), 500
+
+    # ------------------------------------------------------------------ #
+    # Auto-update
+    # ------------------------------------------------------------------ #
+
+    _update_cache: dict = {"checked": False, "result": None}
+    _download_state: dict = {"status": "idle", "progress": 0, "error": None, "path": None}
+
+    @app.route("/api/update/check", methods=["GET"])
+    def update_check():
+        import updater as _updater
+        force = request.args.get("force") == "1"
+        if not _update_cache["checked"] or force:
+            result = _updater.check_for_update()
+            _update_cache["result"] = result
+            _update_cache["checked"] = True
+        r = _update_cache["result"]
+        if r is None:
+            return jsonify({"update_available": False, "error": "check failed",
+                            "current": node_identity.get("version", "unknown")})
+        return jsonify(r)
+
+    @app.route("/api/update/download", methods=["POST"])
+    def update_download():
+        import updater as _updater
+        import threading as _threading
+        if _download_state["status"] == "downloading":
+            return jsonify({"error": "Already downloading"}), 409
+        info = _update_cache.get("result") or {}
+        url = info.get("download_url")
+        if not url:
+            return jsonify({"error": "No download URL — check for updates first"}), 400
+
+        def _run():
+            _download_state.update({"status": "downloading", "progress": 0,
+                                    "error": None, "path": None})
+            try:
+                def _prog(pct):
+                    _download_state["progress"] = pct
+                path = _updater.download_update(url, progress_cb=_prog)
+                _download_state.update({"status": "ready", "progress": 100, "path": path})
+            except Exception as e:
+                logger.error(f"Update download failed: {e}")
+                _download_state.update({"status": "error", "error": str(e)})
+
+        _threading.Thread(target=_run, daemon=True).start()
+        return jsonify({"started": True})
+
+    @app.route("/api/update/progress", methods=["GET"])
+    def update_progress():
+        return jsonify(_download_state)
+
+    @app.route("/api/update/apply", methods=["POST"])
+    def update_apply():
+        if _download_state["status"] != "ready":
+            return jsonify({"error": "No update staged — download first"}), 400
+        import threading as _threading
+
+        def _exit():
+            import time
+            time.sleep(0.4)
+            os._exit(0)
+
+        _threading.Thread(target=_exit, daemon=True).start()
+        return jsonify({"exiting": True})
 
     # ------------------------------------------------------------------ #
     # Peer-to-peer endpoints

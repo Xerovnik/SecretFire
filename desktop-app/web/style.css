@@ -522,6 +522,40 @@ textarea::placeholder { color: var(--text3); }
 }
 .import-area:focus { border-color: var(--accent); color: var(--text); }
 
+/* ── Update banner ───────────────────────────────────────────────────── */
+.update-banner {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+  background: linear-gradient(90deg, rgba(0,229,255,.06) 0%, rgba(156,111,255,.06) 100%);
+  border-bottom: 1px solid rgba(0,229,255,.25);
+  padding: 10px 20px; font-size: 13px;
+}
+.update-banner-left { display: flex; align-items: center; gap: 8px; color: var(--accent); font-weight: 600; }
+.update-banner-right { display: flex; align-items: center; gap: 10px; }
+.btn-update {
+  background: var(--accent); color: var(--bg1); border: none;
+  padding: 5px 14px; border-radius: var(--radius); font-weight: 700;
+  font-size: 12px; cursor: pointer; letter-spacing: .04em;
+  transition: opacity .15s;
+}
+.btn-update:hover { opacity: .85; }
+.btn-update:disabled { opacity: .45; cursor: not-allowed; }
+.update-dismiss {
+  background: none; border: none; color: var(--text-muted); cursor: pointer;
+  font-size: 14px; line-height: 1; padding: 2px 4px;
+}
+.update-dismiss:hover { color: var(--text); }
+.update-progress-wrap { display: flex; align-items: center; gap: 8px; }
+.update-progress-track {
+  width: 120px; height: 5px; background: var(--bg3);
+  border-radius: 3px; overflow: hidden;
+}
+.update-progress-fill {
+  height: 100%; width: 0%; background: var(--accent);
+  border-radius: 3px; transition: width .3s;
+}
+.update-progress-pct { font-size: 11px; color: var(--text-muted); min-width: 30px; }
+
 /* ── Toast ───────────────────────────────────────────────────────────── */
 .toast {
   position: fixed; bottom: 20px; right: 20px;
