@@ -55,6 +55,9 @@ def create_app(tor_manager, gossip_manager, node_identity: dict) -> Flask:
     @app.route("/api/status")
     def status():
         tor_status = tor_manager.status()
+        # Normalise: older tor_manager returns "running" not "connected"
+        if "connected" not in tor_status:
+            tor_status["connected"] = tor_status.get("running", False)
         stats = storage.get_stats()
         return jsonify({
             "app": "SecretFire",

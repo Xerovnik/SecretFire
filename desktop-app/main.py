@@ -20,10 +20,6 @@ Entry point: starts Tor, initialises the node, launches the Flask server,
 and opens the browser/webview.
 """
 
-# Install log buffer FIRST so it captures all startup messages including Tor
-import log_buffer
-log_buffer.install()
-
 import json
 import sys
 import time
@@ -35,12 +31,20 @@ import os
 import socket
 from pathlib import Path
 
+# Set up the stdout handler FIRST so basicConfig installs it before log_buffer
+# adds its own handler (basicConfig is a no-op if handlers already exist).
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
     stream=sys.stdout,
 )
 logger = logging.getLogger("main")
+
+# Install log buffer AFTER basicConfig — adds as a second handler so both
+# stdout and the in-app Console tab receive every log record.
+# Also wraps sys.stdout so print() calls appear in the Console tab.
+import log_buffer
+log_buffer.install()
 
 import storage
 import crypto_utils
