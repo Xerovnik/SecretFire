@@ -278,7 +278,43 @@ function renderPosts() {
     </div>`;
     return;
   }
+
+  // Preserve open thread state across re-renders so background polls don't
+  // wipe reply drafts or reset the replies list back to "Loading…"
+  const saved = {};
+  appState.openThreads.forEach(id => {
+    const ta         = document.getElementById(`reply-ta-${id}`);
+    const repliesEl  = document.getElementById(`replies-${id}`);
+    saved[id] = {
+      draft:   ta        ? ta.value         : "",
+      replies: repliesEl ? repliesEl.innerHTML : "",
+    };
+  });
+
   el.innerHTML = roots.map(p => renderPostItem(p, myKey)).join("");
+
+  // Restore textarea drafts and replies HTML after the re-render
+  appState.openThreads.forEach(id => {
+    const snap = saved[id];
+    if (!snap) return;
+
+    const ta = document.getElementById(`reply-ta-${id}`);
+    if (ta && snap.draft) {
+      ta.value = snap.draft;
+      autoResize(ta);
+    }
+
+    const repliesEl = document.getElementById(`replies-${id}`);
+    if (repliesEl) {
+      if (snap.replies) {
+        // Restore previous replies immediately — no loading flash
+        repliesEl.innerHTML = snap.replies;
+      } else {
+        // First open — go fetch them
+        loadReplies(id);
+      }
+    }
+  });
 }
 
 function renderPostItem(p, myKey) {
