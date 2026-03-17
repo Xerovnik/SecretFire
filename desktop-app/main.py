@@ -54,7 +54,7 @@ from gossip import GossipManager
 from api_server import create_app
 from config import (
     FLASK_HOST, FLASK_PORT, KEY_FILE, DATA_DIR,
-    SEED_NODES
+    SEED_NODES, APP_VERSION
 )
 
 
@@ -153,7 +153,7 @@ def _make_tray_image():
         return None
 
 
-def start_tray(app_url: str):
+def start_tray(app_url: str, tor_manager=None):
     """Start the system tray icon in a background thread."""
     try:
         import pystray
@@ -167,6 +167,12 @@ def start_tray(app_url: str):
 
         def quit_app(icon, item):
             icon.stop()
+            if tor_manager is not None:
+                logger.info("Stopping Tor before exit…")
+                try:
+                    tor_manager.stop()
+                except Exception as e:
+                    logger.warning(f"Tor stop error: {e}")
             os._exit(0)
 
         menu = pystray.Menu(
@@ -221,9 +227,8 @@ def main():
  \___ \ / _ \/ __| '__/ _ \ || |_  | | '__/ _ \
   ___) |  __/ (__| | |  __/ ||  _| | | | |  __/
  |____/ \___|\___|_|  \___|_||_|   |_|_|  \___|
-
-  Anonymous P2P Microblogging  v0.1.9
-    """)
+""")
+    print(f"  Anonymous P2P Microblogging  v{APP_VERSION}\n")
 
     logger.info("Initialising storage...")
     storage.init_db()
@@ -262,7 +267,7 @@ def main():
         logger.warning("Server did not become ready in time — opening anyway.")
 
     url = f"http://127.0.0.1:{FLASK_PORT}"
-    start_tray(url)
+    start_tray(url, tor)
     _hide_console_window()
     open_window(FLASK_PORT)
 

@@ -404,8 +404,19 @@ class TorManager:
                 self.process.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 self.process.kill()
+                try:
+                    self.process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    pass
             self.process = None
         self.is_running = False
+        lock = TOR_DATA_DIR / "lock"
+        if lock.exists():
+            try:
+                lock.unlink()
+                logger.info("Removed Tor lock file on clean shutdown")
+            except Exception as e:
+                logger.warning(f"Could not remove Tor lock file on shutdown: {e}")
 
     def status(self) -> dict:
         return {

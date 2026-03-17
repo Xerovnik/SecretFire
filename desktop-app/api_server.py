@@ -397,7 +397,12 @@ def create_app(tor_manager, gossip_manager, node_identity: dict) -> Flask:
                 _updater.apply_update(staged)
             except Exception as e:
                 logger.error(f"apply_update failed: {e}")
-            time.sleep(0.5)
+            time.sleep(0.3)
+            try:
+                logger.info("Stopping Tor before update restart…")
+                tor_manager.stop()
+            except Exception as e:
+                logger.warning(f"Tor stop error during update: {e}")
             os._exit(0)
 
         _threading.Thread(target=_do_apply, daemon=True).start()
