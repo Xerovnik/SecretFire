@@ -187,15 +187,31 @@ def _start_powershell_launcher(new_exe: Path, current_exe: Path,
     quoting/escaping issues with paths that contain spaces.
     PowerShell is available on every supported Windows version (7+).
     CREATE_NEW_PROCESS_GROUP ensures the child survives after os._exit().
+
+    Strategy: rename old exe → copy new exe → start new exe.
+    Windows lets you rename (Move-Item) a recently-run exe on NTFS without
+    error, but Copy-Item -Force over the same path can fail with a file-lock
+    error even seconds after the process exits.  Moving the old binary out of
+    the way first avoids that lock entirely.
     """
+    backup_exe = str(current_exe) + ".bak"
     ps1 = stage_dir / "do_update.ps1"
     # Single-quoted strings in PowerShell are literal — no variable expansion,
     # safe even when paths contain spaces or special characters.
     ps1.write_text(
-        "Start-Sleep -Seconds 4\n"
+        "Start-Sleep -Seconds 6\n"
+        # Remove any leftover backup from a previous failed update attempt
+        f"if (Test-Path -LiteralPath '{backup_exe}') {{ Remove-Item -Force -LiteralPath '{backup_exe}' }}\n"
+        # Rename old exe to .bak — always succeeds on NTFS, avoids overwrite lock
+        f"Move-Item -LiteralPath '{current_exe}' -Destination '{backup_exe}' -ErrorAction SilentlyContinue\n"
+        # Copy new binary into the now-vacant original path
         f"Copy-Item -Force -Path '{new_exe}' -Destination '{current_exe}'\n"
+        # Launch updated app
         f"Start-Process -FilePath '{current_exe}'\n"
-        "Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force\n",
+        # Give the new app a moment to start, then clean up
+        "Start-Sleep -Seconds 3\n"
+        f"Remove-Item -Force -LiteralPath '{backup_exe}' -ErrorAction SilentlyContinue\n"
+        "Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue\n",
         encoding="utf-8",
     )
     subprocess.Popen(
