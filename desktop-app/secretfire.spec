@@ -6,8 +6,6 @@ import os
 from pathlib import Path
 
 # Include pre-downloaded Tor bundle if present (built by download_tor_bundle.py).
-# When present, users never need to download Tor themselves — important for
-# users on networks that block torproject.org (e.g. UAE, China, Russia).
 tor_bundle_path = Path("tor_bundle")
 tor_bundle_datas = []
 if tor_bundle_path.exists():
@@ -26,17 +24,25 @@ a = Analysis(
         ("web", "web"),
     ] + tor_bundle_datas,
     hiddenimports=[
+        # cryptography
         "cryptography",
         "cryptography.hazmat.primitives",
         "cryptography.hazmat.primitives.asymmetric.x25519",
         "cryptography.hazmat.primitives.asymmetric.ed25519",
         "cryptography.hazmat.primitives.ciphers.aead",
         "cryptography.hazmat.primitives.kdf.hkdf",
+        # argon2-cffi (identity encryption)
+        "argon2",
+        "argon2.low_level",
+        "argon2._utils",
+        "argon2._typing",
+        # flask / server
         "flask",
         "flask_cors",
         "stem",
         "requests",
         "waitress",
+        # tray / gui
         "pystray",
         "pystray._win32",
         "pystray._xorg",
@@ -44,9 +50,14 @@ a = Analysis(
         "PIL",
         "PIL.Image",
         "PIL.ImageDraw",
+        # tkinter dialogs
         "tkinter",
         "tkinter.filedialog",
+        "tkinter.messagebox",
+        "tkinter.simpledialog",
+        # local modules
         "updater",
+        "identity",
     ],
     hookspath=[],
     hooksconfig={},
@@ -68,7 +79,10 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    # UPX is disabled: UPX compression interferes with the Windows PE loader
+    # for python3xx.dll and VC++ runtime DLLs, causing "Failed to load Python DLL"
+    # / "The specified module could not be found" errors on some Windows systems.
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,
