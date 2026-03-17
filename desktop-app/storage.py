@@ -173,6 +173,20 @@ def post_exists(post_id):
     return row is not None
 
 
+def delete_post(post_id: str) -> bool:
+    """Delete a post and all its replies from local storage.
+
+    Returns True if at least one row was deleted, False if the post was
+    not found.  This only affects the local node — posts already propagated
+    to peers are unaffected.
+    """
+    conn = _conn()
+    conn.execute("DELETE FROM posts WHERE parent_id=?", (post_id,))
+    cur = conn.execute("DELETE FROM posts WHERE id=?", (post_id,))
+    conn.commit()
+    return cur.rowcount > 0
+
+
 def save_peer(onion_address):
     conn = _conn()
     now = _now()

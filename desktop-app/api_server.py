@@ -248,6 +248,13 @@ def create_app(
 
         return jsonify({"success": True, "post_id": post_id, "timestamp": ts}), 201
 
+    @app.route("/api/posts/<post_id>", methods=["DELETE"])
+    def delete_post(post_id):
+        deleted = storage.delete_post(post_id)
+        if not deleted:
+            return jsonify({"error": "Post not found"}), 404
+        return jsonify({"success": True})
+
     # ------------------------------------------------------------------ #
     # Peers
     # ------------------------------------------------------------------ #

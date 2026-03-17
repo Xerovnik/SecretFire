@@ -340,6 +340,15 @@ function renderPostItem(p, myKey) {
     ? `${replyCount} repl${replyCount===1?"y":"ies"}`
     : "Reply";
 
+  const deleteBtn = isLocal
+    ? `<button class="action-btn action-btn-delete" onclick="deletePost('${esc(p.id)}')" title="Delete from local node">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+        </svg>
+        Delete
+      </button>`
+    : "";
+
   const threadHtml = isOpen
     ? `<div class="thread-section" id="thread-${p.id}">
         <div id="replies-${p.id}"><div class="empty-thread">Loading\u2026</div></div>
@@ -376,6 +385,7 @@ function renderPostItem(p, myKey) {
           </svg>
           ${replyLabel}
         </button>
+        ${deleteBtn}
       </div>
     </div>
     ${threadHtml}
@@ -441,6 +451,19 @@ async function submitReply(parentId) {
     await pollPosts();
   } catch (e) { toast("Failed: " + e.message, "error"); }
   finally { if (btn) btn.disabled = false; }
+}
+
+async function deletePost(postId) {
+  const confirmed = window.confirm(
+    "Delete this post from your local node?\n\nNote: this cannot be undone. Peers that already received this post will still have a copy."
+  );
+  if (!confirmed) return;
+  try {
+    await apiFetch(`/api/posts/${postId}`, { method: "DELETE" });
+    appState.openThreads.delete(postId);
+    toast("Post deleted", "success");
+    await pollPosts();
+  } catch (e) { toast("Failed to delete: " + e.message, "error"); }
 }
 
 /* ── Compose ─────────────────────────────────────────────────────────── */
