@@ -66,3 +66,6 @@ desktop-app/tor_data/
 *.db
 *.db-shm
 *.db-wal
+
+# Tor bundle — pre-downloaded during CI, never commit platform binaries
+desktop-app/tor_bundle/

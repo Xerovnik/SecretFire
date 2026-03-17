@@ -29,6 +29,7 @@ import io
 import logging
 import os
 import platform
+import shutil
 import sys
 import tarfile
 import threading
@@ -83,6 +84,56 @@ def get_local_version() -> str | None:
     if VERSION_FILE.exists():
         return VERSION_FILE.read_text().strip()
     return None
+
+
+def _install_from_bundle() -> Path | None:
+    """
+    If running from a PyInstaller bundle that includes a pre-downloaded Tor,
+    copy those files to TOR_BIN_DIR so the app can use them without any
+    network download.  This is the primary path for users on networks that
+    block torproject.org (UAE, China, Russia, etc.).
+
+    Returns the tor executable path on success, or None if not applicable.
+    """
+    if not getattr(sys, "frozen", False):
+        return None
+
+    meipass = Path(sys._MEIPASS)
+    bundle_dir = meipass / "tor_bundle"
+    if not bundle_dir.exists():
+        logger.debug("No tor_bundle/ in PyInstaller bundle — skipping bundled install")
+        return None
+
+    _, exe_name, _ = _platform_info()
+    src_exe = bundle_dir / exe_name
+    if not src_exe.exists():
+        logger.warning(f"tor_bundle/ exists but '{exe_name}' not found inside it")
+        return None
+
+    if get_bundled_tor_path():
+        return get_bundled_tor_path()
+
+    logger.info("Installing pre-bundled Tor to user data directory...")
+    TOR_BIN_DIR.mkdir(parents=True, exist_ok=True)
+
+    _EXECUTABLES = {exe_name, "lyrebird", "obfs4proxy", "snowflake-client",
+                    "lyrebird.exe", "obfs4proxy.exe", "snowflake-client.exe",
+                    "tor-gencert"}
+    for src in bundle_dir.iterdir():
+        if not src.is_file():
+            continue
+        dst = TOR_BIN_DIR / src.name
+        shutil.copy2(str(src), str(dst))
+        if sys.platform != "win32":
+            dst.chmod(0o755 if src.name in _EXECUTABLES else 0o644)
+
+    version_src = bundle_dir / "version.txt"
+    if version_src.exists():
+        VERSION_FILE.write_text(version_src.read_text())
+
+    tor_path = TOR_BIN_DIR / exe_name
+    logger.info(f"Pre-bundled Tor installed to {TOR_BIN_DIR}")
+    return tor_path if tor_path.exists() else None
 
 
 def get_latest_version() -> str:
@@ -198,45 +249,52 @@ def _download_and_verify(version: str) -> Path:
 
 def check_and_update(force: bool = False) -> Path | None:
     """
-    Check whether the locally stored Tor binary is up to date.
-    Downloads a new version if:
-      - No local binary exists, or
-      - The local version is more than MAX_RELEASES_BEHIND behind latest, or
-      - force=True is passed.
+    Ensure a working Tor binary is available, in order of preference:
+      1. Already in TOR_BIN_DIR (fast path — no-op on subsequent runs)
+      2. Pre-bundled inside the PyInstaller executable (no download needed —
+         critical for users on networks that block torproject.org)
+      3. Downloaded fresh from the Tor Project servers
 
-    Returns the path to the (possibly freshly installed) Tor binary,
-    or None if the download fails and no local binary exists.
+    Returns the path to the Tor binary, or None if all methods fail.
     """
+    # Fast path — binary already installed from a previous run
+    existing = get_bundled_tor_path()
+    if existing and not force:
+        try:
+            latest = get_latest_version()
+            local = get_local_version()
+            behind = releases_behind(local, latest) if local else MAX_RELEASES_BEHIND + 1
+            if behind <= MAX_RELEASES_BEHIND:
+                logger.info(f"Tor binary is up to date ({local})")
+                return existing
+            logger.warning(
+                f"Local Tor ({local}) is {behind} release(s) behind "
+                f"latest ({latest}) — updating now."
+            )
+        except Exception as exc:
+            logger.warning(f"Version check failed: {exc} — continuing with existing binary")
+            return existing
+
+    # Try to install from the PyInstaller bundle (works on censored networks)
+    bundled = _install_from_bundle()
+    if bundled:
+        return bundled
+
+    # Fall back to downloading from the Tor Project
     try:
         latest = get_latest_version()
-        local = get_local_version()
-        logger.info(
-            f"Tor version check — local: {local or 'none'}, latest: {latest}"
-        )
-
-        behind = releases_behind(local, latest) if local else MAX_RELEASES_BEHIND + 1
-
-        if force or not get_bundled_tor_path() or behind > MAX_RELEASES_BEHIND:
-            if behind > MAX_RELEASES_BEHIND:
-                logger.warning(
-                    f"Local Tor ({local}) is {behind} release(s) behind "
-                    f"latest ({latest}) — updating now."
-                )
-            return _download_and_verify(latest)
-        else:
-            logger.info("Tor binary is up to date.")
-            return get_bundled_tor_path()
-
+        logger.info(f"Downloading Tor {latest} from Tor Project…")
+        return _download_and_verify(latest)
     except Exception as exc:
-        logger.warning(f"Tor update check failed: {exc}")
-        existing = get_bundled_tor_path()
-        if existing:
-            logger.info(f"Continuing with existing Tor binary: {existing}")
+        logger.warning(f"Tor download failed: {exc}")
+        fallback = get_bundled_tor_path()
+        if fallback:
+            logger.info(f"Continuing with existing Tor binary: {fallback}")
         else:
             logger.warning(
                 "No local Tor binary available — will fall back to system Tor or demo mode."
             )
-        return existing
+        return fallback
 
 
 def start_background_updater() -> None:

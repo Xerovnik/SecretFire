@@ -2,13 +2,29 @@
 # PyInstaller spec — builds SecretFire into a single-file executable
 # Run: pyinstaller secretfire.spec
 
+import os
+from pathlib import Path
+
+# Include pre-downloaded Tor bundle if present (built by download_tor_bundle.py).
+# When present, users never need to download Tor themselves — important for
+# users on networks that block torproject.org (e.g. UAE, China, Russia).
+tor_bundle_path = Path("tor_bundle")
+tor_bundle_datas = []
+if tor_bundle_path.exists():
+    for f in tor_bundle_path.iterdir():
+        if f.is_file():
+            tor_bundle_datas.append((str(f), "tor_bundle"))
+    print(f"[spec] Bundling {len(tor_bundle_datas)} Tor file(s) from {tor_bundle_path}/")
+else:
+    print("[spec] WARNING: tor_bundle/ not found — Tor will be downloaded at runtime")
+
 a = Analysis(
     ["main.py"],
     pathex=["."],
     binaries=[],
     datas=[
         ("web", "web"),
-    ],
+    ] + tor_bundle_datas,
     hiddenimports=[
         "cryptography",
         "cryptography.hazmat.primitives",

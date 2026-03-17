@@ -39,6 +39,10 @@ jobs:
         working-directory: desktop-app
         run: pip install -r requirements.txt
 
+      - name: Download Tor bundle
+        working-directory: desktop-app
+        run: python download_tor_bundle.py
+
       - name: Build with PyInstaller
         working-directory: desktop-app
         run: pyinstaller secretfire.spec
