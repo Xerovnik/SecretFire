@@ -30,6 +30,7 @@ to vanilla Tor, just harder for routers and ISPs to fingerprint and block.
 
 import json
 import os
+import platform
 import shutil
 import socket
 import subprocess
@@ -169,6 +170,30 @@ class TorManager:
     # torrc writing
     # ------------------------------------------------------------------
 
+    def _kill_orphan_tor(self) -> None:
+        """Kill any Tor process left running by a previous app instance."""
+        try:
+            if platform.system() == "Windows":
+                # Kill by image name — only affects tor.exe, not system processes
+                result = subprocess.run(
+                    ["taskkill", "/f", "/im", "tor.exe"],
+                    capture_output=True, timeout=8,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+                if result.returncode == 0:
+                    logger.info("Killed orphaned tor.exe process")
+            else:
+                # Kill by matching the bundled tor binary path
+                tor_path = str(TOR_BIN_DIR)
+                subprocess.run(
+                    ["pkill", "-f", tor_path],
+                    capture_output=True, timeout=8,
+                )
+                logger.info("Killed orphaned Tor process (Unix)")
+            time.sleep(0.8)  # give the OS time to release the lock file
+        except Exception as e:
+            logger.warning(f"Could not kill orphan Tor process: {e}")
+
     def _clear_stale_lock(self):
         lock = TOR_DATA_DIR / "lock"
         if lock.exists():
@@ -177,6 +202,13 @@ class TorManager:
                 logger.info("Removed stale Tor lock file")
             except OSError as e:
                 logger.warning(f"Could not remove stale lock file: {e}")
+                # Lock is held by a running process — kill it and retry once
+                self._kill_orphan_tor()
+                try:
+                    lock.unlink()
+                    logger.info("Removed stale Tor lock file after killing orphan")
+                except OSError:
+                    logger.warning("Still cannot remove lock file — Tor may fail to start")
 
     def _write_torrc(self, bridges: list[str] | None = None) -> Path:
         TOR_DATA_DIR.mkdir(parents=True, exist_ok=True)

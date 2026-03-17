@@ -185,8 +185,25 @@ aside {
 /* ── Main content ────────────────────────────────────────────────────── */
 main {
   grid-area: main;
+  overflow: hidden;
+  height: calc(100vh - 54px);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Non-console tabs scroll themselves; display:none tabs don't participate in flex */
+#tab-feed,
+#tab-peers,
+#tab-settings {
+  flex: 1;
   overflow-y: auto;
-  max-height: calc(100vh - 54px);
+  min-height: 0;
+}
+
+/* Console tab: flex-grows to fill remaining space; inner .console-wrap takes 100% */
+#tab-console {
+  flex: 1;
+  min-height: 0;
 }
 
 /* ── Compose box ─────────────────────────────────────────────────────── */
@@ -479,7 +496,7 @@ textarea::placeholder { color: var(--text3); }
 
 /* ── Console tab ─────────────────────────────────────────────────────── */
 .console-wrap {
-  display: flex; flex-direction: column; height: calc(100vh - 54px);
+  display: flex; flex-direction: column; height: 100%;
 }
 .console-toolbar {
   display: flex; align-items: center; justify-content: space-between;
