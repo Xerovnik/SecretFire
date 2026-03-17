@@ -22,12 +22,14 @@ In demo mode: direct HTTP (for local testing with multiple instances).
 """
 
 import json
+import re
 import time
 import logging
 import threading
 import hashlib
 import base64
 import uuid
+from collections import deque
 import requests
 import storage
 import protocol
@@ -36,9 +38,34 @@ from config import GOSSIP_INTERVAL, TOR_HIDDEN_SERVICE_PORT
 
 logger = logging.getLogger("gossip")
 
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+# Tor v3 onion address: 56 base32 chars + ".onion"
+_V3_ONION_RE = re.compile(r'^[a-z2-7]{56}\.onion$')
+
+# Fragment timestamp window: reject anything older than 48 h or more than
+# 5 minutes ahead of our clock (clock skew between nodes).
+_FRAGMENT_MAX_AGE_S = 48 * 3600
+_FRAGMENT_MAX_FUTURE_S = 300
+
+# Sliding-window rate limit on inbound fragments: max this many accepted
+# across ALL peers in a rolling 60-second window.
+_MAX_FRAGS_PER_WINDOW = 120
+_RATE_WINDOW_S = 60
+
+# Maximum encoded fragment size (bytes) accepted over the wire.
+_MAX_FRAGMENT_BYTES = 8192
+
 
 def _peer_url(onion_address: str) -> str:
     return f"http://{onion_address}"
+
+
+def _is_valid_onion(addr: str) -> bool:
+    """Return True for valid Tor v3 hidden service addresses only."""
+    return bool(_V3_ONION_RE.match(addr))
 
 
 class GossipManager:
@@ -49,6 +76,10 @@ class GossipManager:
         self._stop_event = threading.Event()
         self._thread = None
 
+        # Sliding-window rate limiter for inbound fragments
+        self._frag_bucket: deque = deque()
+        self._frag_lock = threading.Lock()
+
     def start(self):
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
         self._thread.start()
@@ -57,11 +88,30 @@ class GossipManager:
     def stop(self):
         self._stop_event.set()
 
+    # ------------------------------------------------------------------
+    # Rate limiting
+    # ------------------------------------------------------------------
+
+    def _accept_fragment(self) -> bool:
+        """Return True and record the fragment if within the rate limit."""
+        now = time.time()
+        with self._frag_lock:
+            cutoff = now - _RATE_WINDOW_S
+            while self._frag_bucket and self._frag_bucket[0] < cutoff:
+                self._frag_bucket.popleft()
+            if len(self._frag_bucket) >= _MAX_FRAGS_PER_WINDOW:
+                return False
+            self._frag_bucket.append(now)
+            return True
+
+    # ------------------------------------------------------------------
+    # Main loop
+    # ------------------------------------------------------------------
+
     def _run_loop(self):
         cycle = 0
         while not self._stop_event.is_set():
             try:
-                # Every 5th cycle also retry inactive peers so they can come back
                 include_inactive = (cycle % 5 == 0)
                 self._sync_all_peers(include_inactive=include_inactive)
                 self._process_complete_fragments()
@@ -77,6 +127,10 @@ class GossipManager:
             session.proxies.update(proxies)
         session.timeout = timeout
         return session
+
+    # ------------------------------------------------------------------
+    # Outbound sync
+    # ------------------------------------------------------------------
 
     def _sync_all_peers(self, include_inactive=False):
         peers = storage.get_peers(active_only=not include_inactive)
@@ -108,8 +162,12 @@ class GossipManager:
         data = resp.json()
 
         for peer_addr in data.get("peers", []):
-            if peer_addr and peer_addr != self.tor.onion_address:
+            if (peer_addr
+                    and peer_addr != self.tor.onion_address
+                    and _is_valid_onion(peer_addr)):
                 storage.save_peer(peer_addr)
+            elif peer_addr and not _is_valid_onion(peer_addr):
+                logger.warning(f"Discarding invalid onion address from peer: {peer_addr!r}")
 
         for post in data.get("posts", []):
             pid = post.get("post_id")
@@ -126,6 +184,10 @@ class GossipManager:
 
         storage.update_peer_status(onion_address, True)
         logger.debug(f"Synced with {onion_address}")
+
+    # ------------------------------------------------------------------
+    # Fragment broadcast
+    # ------------------------------------------------------------------
 
     def broadcast_post(self, post: dict):
         packets, key, msg_id = protocol.fragment_message(
@@ -149,11 +211,36 @@ class GossipManager:
                 except Exception:
                     pass
 
+    # ------------------------------------------------------------------
+    # Inbound fragment handling
+    # ------------------------------------------------------------------
+
     def receive_fragment(self, encoded_fragment: str, broadcast_key_b64: str = None):
         try:
+            # Size guard
+            if len(encoded_fragment) > _MAX_FRAGMENT_BYTES:
+                logger.warning("Received oversized fragment — rejected")
+                return False
+
+            # Rate limit
+            if not self._accept_fragment():
+                logger.warning("Fragment rate limit exceeded — dropped")
+                return False
+
             packet = protocol.decode_packet_from_wire(encoded_fragment)
             h = protocol.parse_packet_header(packet)
             if not h:
+                return False
+
+            # Timestamp freshness check
+            now = time.time()
+            frag_ts = h["timestamp"]
+            age = now - frag_ts
+            if age > _FRAGMENT_MAX_AGE_S:
+                logger.warning(f"Fragment too old ({age/3600:.1f} h) — rejected (replay protection)")
+                return False
+            if frag_ts - now > _FRAGMENT_MAX_FUTURE_S:
+                logger.warning(f"Fragment timestamp in the future by {frag_ts - now:.0f} s — rejected")
                 return False
 
             key = self.broadcast_key
@@ -180,10 +267,14 @@ class GossipManager:
             logger.error(f"Fragment receive error: {e}")
             return False
 
+    # ------------------------------------------------------------------
+    # Fragment reassembly
+    # ------------------------------------------------------------------
+
     def _process_complete_fragments(self):
         complete_ids = storage.get_complete_message_ids()
-        for msg_id in complete_ids:
-            frags = storage.get_fragments(msg_id)
+        for msg_id_b64 in complete_ids:
+            frags = storage.get_fragments(msg_id_b64)
             if not frags:
                 continue
 
@@ -193,8 +284,11 @@ class GossipManager:
 
             try:
                 session_key = base64.b64decode(session_key_b64)
+                msg_id_bytes = base64.b64decode(msg_id_b64)
                 fragments_list = [(f["seq_num"], bytes(f["encrypted_blob"])) for f in frags]
-                message = protocol.reassemble_fragments(fragments_list, session_key)
+                message = protocol.reassemble_fragments(
+                    fragments_list, session_key, msg_id_bytes=msg_id_bytes
+                )
                 if message:
                     try:
                         post = json.loads(message)
@@ -211,9 +305,13 @@ class GossipManager:
                                 )
                     except json.JSONDecodeError:
                         pass
-                    storage.delete_fragments(msg_id)
+                    storage.delete_fragments(msg_id_b64)
             except Exception as e:
-                logger.debug(f"Fragment reassembly error for {msg_id}: {e}")
+                logger.debug(f"Fragment reassembly error for {msg_id_b64}: {e}")
+
+    # ------------------------------------------------------------------
+    # Inbound sync handling
+    # ------------------------------------------------------------------
 
     def handle_sync_request(self, data: dict) -> dict:
         from_peer = data.get("from", "")
@@ -221,7 +319,10 @@ class GossipManager:
         broadcast_key_b64 = data.get("broadcast_key")
 
         if from_peer and from_peer != self.tor.onion_address:
-            storage.save_peer(from_peer)
+            if _is_valid_onion(from_peer):
+                storage.save_peer(from_peer)
+            else:
+                logger.warning(f"Sync request from invalid onion address: {from_peer!r}")
 
         if broadcast_key_b64:
             try:

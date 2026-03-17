@@ -231,13 +231,17 @@ class TorManager:
                 logger.warning("Skipping bridge config — PT binary not found")
 
         torrc_path = TOR_DATA_DIR / "torrc"
+        # Tor's seccomp-based Sandbox is only supported on Linux.
+        # On Windows and macOS it causes startup errors, so we leave it off there.
+        sandbox = "1" if platform.system().lower() == "linux" else "0"
+
         torrc_content = (
             f"SocksPort {self.socks_port}\n"
             f"DataDirectory {TOR_DATA_DIR}\n"
             f"HiddenServiceDir {TOR_HIDDEN_SERVICE_DIR}\n"
             f"HiddenServicePort 80 127.0.0.1:{FLASK_PORT}\n"
             f"Log notice stdout\n"
-            f"Sandbox 0"
+            f"Sandbox {sandbox}"
             f"{bridge_block}"
         )
         torrc_path.write_text(torrc_content)

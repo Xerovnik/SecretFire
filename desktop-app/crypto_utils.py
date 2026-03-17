@@ -19,8 +19,11 @@ import json
 import base64
 import hashlib
 import hmac as hmac_lib
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey, Ed25519PublicKey,
+)
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.serialization import (
     Encoding, PublicFormat, PrivateFormat, NoEncryption
@@ -64,18 +67,25 @@ def generate_broadcast_key():
     return os.urandom(32)
 
 
-def encrypt_chunk(plaintext: bytes, key: bytes) -> bytes:
+def encrypt_chunk(plaintext: bytes, key: bytes, aad: bytes = None) -> bytes:
+    """AES-256-GCM encrypt.
+
+    aad (associated data) is authenticated but not encrypted — any
+    tampering with it causes decryption to fail.  Pass the same value
+    to decrypt_chunk to authenticate the fragment header fields.
+    """
     aesgcm = AESGCM(key)
     nonce = os.urandom(12)
-    ct = aesgcm.encrypt(nonce, plaintext, None)
+    ct = aesgcm.encrypt(nonce, plaintext, aad)
     return nonce + ct
 
 
-def decrypt_chunk(ciphertext: bytes, key: bytes) -> bytes:
+def decrypt_chunk(ciphertext: bytes, key: bytes, aad: bytes = None) -> bytes:
+    """AES-256-GCM decrypt.  Raises InvalidTag if authentication fails."""
     aesgcm = AESGCM(key)
     nonce = ciphertext[:12]
     ct = ciphertext[12:]
-    return aesgcm.decrypt(nonce, ct, None)
+    return aesgcm.decrypt(nonce, ct, aad)
 
 
 def sign_post(content: str, ed25519_private_b64: str) -> str:
@@ -86,13 +96,20 @@ def sign_post(content: str, ed25519_private_b64: str) -> str:
 
 
 def verify_post(content: str, signature_b64: str, ed25519_public_b64: str) -> bool:
+    """Return True iff signature is a valid Ed25519 signature over content.
+
+    Only InvalidSignature is treated as a normal verification failure.
+    Other exceptions (bad key material, bad base64, etc.) are caught
+    separately so they can be logged if needed without masking bugs.
+    """
     try:
-        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
         pub_bytes = base64.b64decode(ed25519_public_b64)
         sig = base64.b64decode(signature_b64)
         pub_key = Ed25519PublicKey.from_public_bytes(pub_bytes)
         pub_key.verify(sig, content.encode())
         return True
+    except InvalidSignature:
+        return False
     except Exception:
         return False
 

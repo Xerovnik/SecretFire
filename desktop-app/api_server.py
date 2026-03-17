@@ -417,6 +417,8 @@ def create_app(tor_manager, gossip_manager, node_identity: dict) -> Flask:
 
     @app.route("/fragment", methods=["POST"])
     def receive_fragment():
+        if request.content_length and request.content_length > 16_384:
+            return jsonify({"error": "payload too large"}), 413
         data = request.get_json()
         if not data or "fragment" not in data:
             return jsonify({"error": "fragment required"}), 400
