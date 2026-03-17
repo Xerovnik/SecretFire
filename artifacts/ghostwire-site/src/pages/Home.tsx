@@ -26,8 +26,12 @@ import {
   Github, 
   Zap, 
   ArrowRight,
-  EyeOff
+  EyeOff,
+  FileText,
+  KeyRound,
+  Cpu
 } from "lucide-react";
+import { useLocation } from "wouter";
 import { CyberButton } from "@/components/CyberButton";
 import { FeatureCard } from "@/components/FeatureCard";
 import { Terminal } from "@/components/Terminal";
@@ -36,6 +40,7 @@ export default function Home() {
   const { scrollY } = useScroll();
   const opacity = useTransform(scrollY, [0, 500], [1, 0]);
   const y = useTransform(scrollY, [0, 500], [0, 150]);
+  const [, navigate] = useLocation();
 
   const handleScrollTo = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
@@ -56,6 +61,12 @@ export default function Home() {
               className="hidden sm:block text-muted-foreground hover:text-primary transition-colors font-sans text-sm uppercase tracking-wider"
             >
               Features
+            </button>
+            <button
+              onClick={() => navigate('/specs')}
+              className="hidden sm:block text-muted-foreground hover:text-primary transition-colors font-sans text-sm uppercase tracking-wider"
+            >
+              Specs
             </button>
             <button 
               onClick={() => handleScrollTo('download')}
@@ -125,8 +136,8 @@ export default function Home() {
               <CyberButton onClick={() => handleScrollTo('download')} icon={<Download />}>
                 Download Now
               </CyberButton>
-              <CyberButton variant="outline" onClick={() => handleScrollTo('install')} icon={<Code />}>
-                View Source
+              <CyberButton variant="outline" onClick={() => navigate('/specs')} icon={<FileText />}>
+                Technical Specs
               </CyberButton>
             </motion.div>
           </motion.div>
@@ -239,6 +250,18 @@ export default function Home() {
               description="Even if peers go offline, the fragmented message architecture ensures delivery when connectivity restores."
               delay={0.6}
             />
+            <FeatureCard
+              icon={<Cpu />}
+              title="Tor Sandbox Hardening"
+              description="On Linux, Tor runs inside a seccomp syscall sandbox. If the kernel rejects it, the node auto-retries safely. OnionTrafficOnly blocks clearnet leaks at the socket level."
+              delay={0.7}
+            />
+            <FeatureCard
+              icon={<KeyRound />}
+              title="Challenge-Response Auth"
+              description="Every peer must prove ownership of their Ed25519 keypair via challenge-response before being trusted. Pubkey mismatch from a known address is flagged as a probable impersonation attempt."
+              delay={0.8}
+            />
           </div>
         </div>
       </section>
@@ -301,8 +324,14 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 flex flex-col items-center">
           <Network className="w-8 h-8 text-primary mb-6 opacity-50" />
           <p className="text-muted-foreground font-mono text-sm">
-            SECRETFIRE v0.1.7 // ANONYMOUS P2P NETWORK
+            SECRETFIRE v0.1.22 // ANONYMOUS P2P NETWORK
           </p>
+          <button
+            onClick={() => navigate('/specs')}
+            className="text-primary/60 hover:text-primary transition-colors font-mono text-xs mt-3"
+          >
+            Technical Specifications →
+          </button>
           <p className="text-muted-foreground/50 text-xs mt-2 max-w-md mx-auto">
             This software is provided "as is", without warranty of any kind. Use at your own risk. Stay safe out there.
           </p>
