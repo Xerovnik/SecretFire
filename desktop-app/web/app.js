@@ -121,6 +121,8 @@ async function pollStatus() {
     });
     const ni = document.getElementById("settings-node-id");
     if (ni) ni.textContent = data.node_id || "\u2014";
+    const vi = document.getElementById("settings-version");
+    if (vi) vi.textContent = data.version ? "v" + data.version : "\u2014";
 
     const sp = data.stats || {};
     document.getElementById("stat-posts").textContent = sp.posts ?? "0";

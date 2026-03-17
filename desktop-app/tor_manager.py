@@ -221,12 +221,19 @@ class TorManager:
             self.process.terminate()
             self.process.wait()
 
+        # On Windows, suppress the blank console window that would otherwise
+        # appear for every child process launched from a GUI (console=False) binary.
+        _flags = 0
+        if hasattr(subprocess, "CREATE_NO_WINDOW"):
+            _flags = subprocess.CREATE_NO_WINDOW
+
         self.process = subprocess.Popen(
             [tor_bin, "-f", str(torrc)],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             env=tor_env,
+            creationflags=_flags,
         )
         logger.info(f"Tor started with PID {self.process.pid}")
 

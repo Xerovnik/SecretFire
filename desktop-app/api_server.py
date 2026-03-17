@@ -30,7 +30,7 @@ from flask_cors import CORS
 import storage
 import crypto_utils
 import log_buffer
-from config import KEY_FILE
+from config import KEY_FILE, APP_VERSION
 
 logger = logging.getLogger("api_server")
 
@@ -97,7 +97,7 @@ def create_app(tor_manager, gossip_manager, node_identity: dict) -> Flask:
         stats = storage.get_stats()
         return jsonify({
             "app": "SecretFire",
-            "version": "0.1.9",
+            "version": APP_VERSION,
             "tor": tor_status,
             "node_id": node_identity.get("node_id", "unknown"),
             "public_key": node_identity.get("ed25519_public", ""),
