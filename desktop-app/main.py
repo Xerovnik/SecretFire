@@ -147,7 +147,7 @@ def main():
  (__  )  __/ /__/ /  /  __/ /_/ __/ / / /  /  __/
 /____/\___/\___/_/   \___/\__/_/   /_/_/   \___/
 
-  Anonymous P2P Microblogging  v0.1.5  (YOU SHALL NOT PASS!!! )
+  Anonymous P2P Microblogging  v0.1.6  (YOU SHALL NOT PASS!!! )
     """)
 
     logger.info("Initialising storage...")
