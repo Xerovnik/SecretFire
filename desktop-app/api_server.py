@@ -36,6 +36,41 @@ logger = logging.getLogger("api_server")
 WEB_DIR = Path(__file__).parent / "web"
 
 
+def _save_file_dialog(default_name: str, content: str) -> str | None:
+    """
+    Open a native OS save-file dialog and write `content` to the chosen path.
+    Returns the saved path, or None if the user cancelled.
+    Works on Windows, Linux (X11), and macOS.
+    """
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        path = filedialog.asksaveasfilename(
+            parent=root,
+            title="Export SecretFire Identity",
+            defaultextension=".json",
+            initialfile=default_name,
+            filetypes=[("JSON backup", "*.json"), ("All files", "*.*")],
+        )
+        root.destroy()
+        if not path:
+            return None
+        Path(path).write_text(content, encoding="utf-8")
+        return path
+    except Exception as e:
+        logger.error(f"Save dialog failed: {e}")
+        # Fallback: save to Downloads folder
+        import os
+        downloads = Path(os.path.expanduser("~/Downloads"))
+        downloads.mkdir(parents=True, exist_ok=True)
+        fallback = downloads / default_name
+        fallback.write_text(content, encoding="utf-8")
+        return str(fallback)
+
+
 def create_app(tor_manager, gossip_manager, node_identity: dict) -> Flask:
     app = Flask(__name__, static_folder=str(WEB_DIR))
     CORS(app)
@@ -219,6 +254,31 @@ def create_app(tor_manager, gossip_manager, node_identity: dict) -> Flask:
             }
             return jsonify(backup)
         except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/identity/export-file", methods=["POST"])
+    def export_identity_to_file():
+        """Open a native OS save-file dialog and write the identity JSON there."""
+        if not KEY_FILE.exists():
+            return jsonify({"error": "No identity found"}), 404
+        try:
+            identity = json.loads(KEY_FILE.read_text())
+            backup = {
+                "secretfire_identity_backup": True,
+                "backup_version": "1",
+                "node_id": identity.get("node_id"),
+                "ed25519_public": identity.get("ed25519_public"),
+                "ed25519_private": identity.get("ed25519_private"),
+            }
+            content = json.dumps(backup, indent=2)
+            default_name = f"secretfire-identity-{(identity.get('node_id') or '')[:8]}.json"
+
+            saved_path = _save_file_dialog(default_name, content)
+            if saved_path is None:
+                return jsonify({"cancelled": True})
+            return jsonify({"success": True, "path": saved_path})
+        except Exception as e:
+            logger.error(f"Identity export failed: {e}")
             return jsonify({"error": str(e)}), 500
 
     @app.route("/api/identity/import", methods=["POST"])

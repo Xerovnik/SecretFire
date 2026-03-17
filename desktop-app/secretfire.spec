@@ -44,6 +44,8 @@ a = Analysis(
         "PIL",
         "PIL.Image",
         "PIL.ImageDraw",
+        "tkinter",
+        "tkinter.filedialog",
     ],
     hookspath=[],
     hooksconfig={},

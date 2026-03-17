@@ -424,24 +424,36 @@ async function submitPost() {
 }
 
 /* ── Sync ────────────────────────────────────────────────────────────── */
-async function syncNow() {
+async function syncNow(btn) {
+  const el = btn || document.getElementById("sync-btn");
+  const origHTML = el ? el.innerHTML : "";
+  if (el) {
+    el.disabled = true;
+    el.innerHTML = `<span class="spinner"></span> Syncing\u2026`;
+  }
   try {
     await apiFetch("/api/sync-now", { method:"POST" });
-    toast("Sync complete", "success");
+    toast("Sync complete \u2014 peers updated", "success");
     await pollPosts(); await pollPeers(); await pollStatus();
-  } catch (e) { toast("Sync error: " + e.message, "error"); }
+  } catch (e) {
+    toast("Sync error: " + e.message, "error");
+  } finally {
+    if (el) { el.disabled = false; el.innerHTML = origHTML; }
+  }
 }
 
 /* ── Identity ────────────────────────────────────────────────────────── */
 async function exportIdentity() {
+  toast("Opening save dialog\u2026", "info");
   try {
-    const data = await apiFetch("/api/identity/export");
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type:"application/json" });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href = url; a.download = `secretfire-identity-${(data.node_id||"").slice(0,8)}.json`;
-    a.click(); URL.revokeObjectURL(url);
-    toast("Identity exported \u2014 keep it safe!", "success");
+    const r = await apiFetch("/api/identity/export-file", { method: "POST" });
+    if (r.cancelled) {
+      toast("Export cancelled", "info");
+    } else if (r.success) {
+      toast(`Saved to: ${r.path}`, "success");
+    } else {
+      throw new Error(r.error || "Unknown error");
+    }
   } catch (e) { toast("Export failed: " + e.message, "error"); }
 }
 
