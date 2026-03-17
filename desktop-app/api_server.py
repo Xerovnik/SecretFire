@@ -385,14 +385,22 @@ def create_app(tor_manager, gossip_manager, node_identity: dict) -> Flask:
     def update_apply():
         if _download_state["status"] != "ready":
             return jsonify({"error": "No update staged — download first"}), 400
+        staged = _download_state.get("path")
+        if not staged:
+            return jsonify({"error": "Staged path missing"}), 400
         import threading as _threading
+        import updater as _updater
 
-        def _exit():
+        def _do_apply():
             import time
-            time.sleep(0.4)
+            try:
+                _updater.apply_update(staged)
+            except Exception as e:
+                logger.error(f"apply_update failed: {e}")
+            time.sleep(0.5)
             os._exit(0)
 
-        _threading.Thread(target=_exit, daemon=True).start()
+        _threading.Thread(target=_do_apply, daemon=True).start()
         return jsonify({"exiting": True})
 
     # ------------------------------------------------------------------ #

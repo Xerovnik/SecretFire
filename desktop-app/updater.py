@@ -113,6 +113,7 @@ def download_update(download_url: str, progress_cb=None) -> str:
 
     progress_cb(pct: int) is called with 0-100 during the download.
     Returns the path to the downloaded file.
+    Does NOT start the launcher — call apply_update() for that.
     Raises RuntimeError if not running as a frozen (PyInstaller) build.
     """
     if not getattr(sys, "frozen", False):
@@ -150,51 +151,90 @@ def download_update(download_url: str, progress_cb=None) -> str:
     if _current_platform() != "windows":
         os.chmod(tmp_path, 0o755)
 
-    _write_launcher(tmp_path, current_exe)
+    logger.info(f"Download complete: {tmp_path}")
     return str(tmp_path)
 
 
-def _write_launcher(new_exe: Path, current_exe: Path) -> None:
+def apply_update(staged_path: str) -> None:
     """
-    Write a small script that waits for this process to exit, replaces the
-    executable, and restarts the app.  Launch the script detached so it
-    survives after we call sys.exit().
+    Write and immediately start the launcher script that will replace the
+    current binary and restart the app.  Call this right before os._exit().
+
+    The launcher sleeps for a few seconds (giving the current process time
+    to fully exit and release any file locks) before copying and restarting.
     """
-    pid = os.getpid()
+    if not getattr(sys, "frozen", False):
+        raise RuntimeError("Auto-update only works in packaged builds.")
+
+    new_exe = Path(staged_path).resolve()
+    current_exe = Path(sys.executable).resolve()
     stage_dir = new_exe.parent
 
-    if _current_platform() == "windows":
-        script = stage_dir / "do_update.bat"
-        script.write_text(
-            "@echo off\n"
-            f":wait\n"
-            f"tasklist /FI \"PID eq {pid}\" 2>nul | find \"{pid}\" >nul\n"
-            f"if not errorlevel 1 (timeout /t 1 /nobreak >nul && goto wait)\n"
-            f"copy /y \"{new_exe}\" \"{current_exe}\"\n"
-            f"start \"\" \"{current_exe}\"\n"
-            "del \"%~f0\"\n",
-            encoding="utf-8",
-        )
-        subprocess.Popen(
-            ["cmd.exe", "/c", str(script)],
-            creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
-            close_fds=True,
-        )
-    else:
-        script = stage_dir / "do_update.sh"
-        script.write_text(
-            "#!/bin/sh\n"
-            f"while kill -0 {pid} 2>/dev/null; do sleep 1; done\n"
-            f"cp -f '{new_exe}' '{current_exe}'\n"
-            f"'{current_exe}' &\n"
-            "rm -- \"$0\"\n",
-            encoding="utf-8",
-        )
-        os.chmod(script, 0o755)
-        subprocess.Popen(
-            ["/bin/sh", str(script)],
-            close_fds=True,
-            start_new_session=True,
-        )
+    logger.info(f"Applying update: {new_exe} → {current_exe}")
 
-    logger.info("Launcher script written and started.")
+    if _current_platform() == "windows":
+        _start_powershell_launcher(new_exe, current_exe, stage_dir)
+    else:
+        _start_shell_launcher(new_exe, current_exe, stage_dir)
+
+
+def _start_powershell_launcher(new_exe: Path, current_exe: Path,
+                                stage_dir: Path) -> None:
+    """
+    Windows: write a .ps1 script and run it hidden via PowerShell.
+
+    Using a .ps1 file (rather than an inline -Command string) avoids all
+    quoting/escaping issues with paths that contain spaces.
+    PowerShell is available on every supported Windows version (7+).
+    CREATE_NEW_PROCESS_GROUP ensures the child survives after os._exit().
+    """
+    ps1 = stage_dir / "do_update.ps1"
+    # Single-quoted strings in PowerShell are literal — no variable expansion,
+    # safe even when paths contain spaces or special characters.
+    ps1.write_text(
+        "Start-Sleep -Seconds 4\n"
+        f"Copy-Item -Force -Path '{new_exe}' -Destination '{current_exe}'\n"
+        f"Start-Process -FilePath '{current_exe}'\n"
+        "Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force\n",
+        encoding="utf-8",
+    )
+    subprocess.Popen(
+        [
+            "powershell.exe",
+            "-NoProfile",
+            "-NonInteractive",
+            "-WindowStyle", "Hidden",
+            "-ExecutionPolicy", "Bypass",
+            "-File", str(ps1),
+        ],
+        # CREATE_NEW_PROCESS_GROUP: child gets its own group → survives parent exit
+        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    logger.info("PowerShell launcher started — exiting now.")
+
+
+def _start_shell_launcher(new_exe: Path, current_exe: Path,
+                           stage_dir: Path) -> None:
+    """Linux / macOS: write a .sh script and start it in its own session."""
+    script = stage_dir / "do_update.sh"
+    script.write_text(
+        "#!/bin/sh\n"
+        "sleep 4\n"
+        f"cp -f '{new_exe}' '{current_exe}'\n"
+        f"'{current_exe}' &\n"
+        "rm -- \"$0\"\n",
+        encoding="utf-8",
+    )
+    os.chmod(script, 0o755)
+    subprocess.Popen(
+        ["/bin/sh", str(script)],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        close_fds=True,
+        start_new_session=True,  # detach from parent's process group
+    )
+    logger.info("Shell launcher started — exiting now.")
