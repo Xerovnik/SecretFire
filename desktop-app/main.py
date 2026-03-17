@@ -17,8 +17,12 @@
 """
 SecretFire — anonymous P2P microblogging over Tor
 Entry point: starts Tor, initialises the node, launches the Flask server,
-and opens the browser.
+and opens the browser/webview.
 """
+
+# Install log buffer FIRST so it captures all startup messages including Tor
+import log_buffer
+log_buffer.install()
 
 import json
 import sys
@@ -83,7 +87,6 @@ def bootstrap_seed_nodes():
 
 
 def wait_for_server(port: int, timeout: float = 15.0) -> bool:
-    """Block until the Flask server is accepting connections or timeout."""
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
@@ -95,7 +98,6 @@ def wait_for_server(port: int, timeout: float = 15.0) -> bool:
 
 
 def start_server(app) -> threading.Thread:
-    """Start the Flask/Waitress server in a background daemon thread."""
     def _run():
         try:
             from waitress import serve
@@ -108,12 +110,59 @@ def start_server(app) -> threading.Thread:
     return t
 
 
+def _make_tray_image():
+    """Create a simple system tray icon using PIL."""
+    try:
+        from PIL import Image, ImageDraw
+        size = 64
+        img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        d = ImageDraw.Draw(img)
+        # Cyan circle background
+        d.ellipse([2, 2, size - 2, size - 2], fill=(0, 200, 220, 255))
+        # Dark inner circle
+        d.ellipse([10, 10, size - 10, size - 10], fill=(8, 14, 26, 255))
+        # Cyan flame-like dots (simplified)
+        d.ellipse([24, 22, 40, 38], fill=(0, 229, 255, 255))
+        d.ellipse([20, 32, 44, 52], fill=(0, 180, 200, 200))
+        return img
+    except Exception:
+        return None
+
+
+def start_tray(app_url: str):
+    """Start the system tray icon in a background thread."""
+    try:
+        import pystray
+        img = _make_tray_image()
+        if not img:
+            logger.warning("System tray: PIL not available — skipping tray icon")
+            return
+
+        def open_app(icon, item):
+            webbrowser.open(app_url)
+
+        def quit_app(icon, item):
+            icon.stop()
+            os._exit(0)
+
+        menu = pystray.Menu(
+            pystray.MenuItem("Open SecretFire", open_app, default=True),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Quit", quit_app),
+        )
+
+        icon = pystray.Icon("SecretFire", img, "SecretFire", menu)
+
+        t = threading.Thread(target=icon.run, daemon=True, name="tray")
+        t.start()
+        logger.info("System tray icon started (right-click to quit)")
+    except ImportError:
+        logger.warning("pystray not installed — system tray not available")
+    except Exception as e:
+        logger.warning(f"System tray failed to start: {e}")
+
+
 def open_window(port: int):
-    """
-    Open the UI in a standalone native window via pywebview.
-    Falls back to the system browser if pywebview is unavailable
-    (e.g. missing system WebKit on some Linux installs).
-    """
     url = f"http://127.0.0.1:{port}"
     try:
         import webview
@@ -121,17 +170,19 @@ def open_window(port: int):
         window = webview.create_window(
             "SecretFire",
             url,
-            width=1200,
-            height=800,
-            min_size=(800, 600),
+            width=1300,
+            height=860,
+            min_size=(900, 650),
             resizable=True,
         )
         webview.start()
+        # After webview window closes, process stays alive via tray
+        logger.info("Window closed — app running in system tray")
+        while True:
+            time.sleep(5)
     except Exception as exc:
         logger.warning(f"pywebview unavailable ({exc}) — falling back to browser.")
         webbrowser.open(url)
-        # Keep the process alive — Flask runs in a daemon thread so the
-        # whole process would exit the moment main() returns otherwise.
         try:
             while True:
                 time.sleep(1)
@@ -147,7 +198,7 @@ def main():
  (__  )  __/ /__/ /  /  __/ /_/ __/ / / /  /  __/
 /____/\___/\___/_/   \___/\__/_/   /_/_/   \___/
 
-  Anonymous P2P Microblogging  v0.1.7  (YOU SHALL NOT PASS!!! )
+  Anonymous P2P Microblogging  v0.1.8  (YOU SHALL NOT PASS!!! )
     """)
 
     logger.info("Initialising storage...")
@@ -170,8 +221,10 @@ def main():
 
     if tor.demo_mode:
         logger.warning("Running in DEMO MODE — messages are NOT anonymous")
+    elif tor.using_bridges:
+        logger.info(f"Tor connected via obfs4 bridges | hidden service: {tor.onion_address}")
     else:
-        logger.info(f"Hidden service: {tor.onion_address}")
+        logger.info(f"Tor connected | hidden service: {tor.onion_address}")
 
     gossip = GossipManager(tor, identity, broadcast_key)
     gossip.start()
@@ -184,6 +237,8 @@ def main():
     if not wait_for_server(FLASK_PORT):
         logger.warning("Server did not become ready in time — opening anyway.")
 
+    url = f"http://127.0.0.1:{FLASK_PORT}"
+    start_tray(url)
     open_window(FLASK_PORT)
 
 

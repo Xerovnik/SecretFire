@@ -121,6 +121,7 @@ class GossipManager:
                     signature=post.get("signature"),
                     timestamp=post.get("timestamp"),
                     source_peer=onion_address,
+                    parent_id=post.get("parent_id"),
                 )
 
         storage.update_peer_status(onion_address, True)
@@ -206,6 +207,7 @@ class GossipManager:
                                     signature=post.get("signature"),
                                     timestamp=post.get("timestamp"),
                                     source_peer="fragment-reassembly",
+                                    parent_id=post.get("parent_id"),
                                 )
                     except json.JSONDecodeError:
                         pass
@@ -239,6 +241,7 @@ class GossipManager:
         return {
             "posts": [{"post_id": p["id"], "content": p["content"],
                        "author_pubkey": p.get("author_pubkey"), "signature": p.get("signature"),
-                       "timestamp": p["timestamp"]} for p in new_posts[:50]],
+                       "timestamp": p["timestamp"], "parent_id": p.get("parent_id")}
+                      for p in new_posts[:50]],
             "peers": peer_list[:20],
         }

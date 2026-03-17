@@ -36,7 +36,8 @@ def init_db():
             signature TEXT,
             timestamp INTEGER NOT NULL,
             received_at INTEGER NOT NULL,
-            source_peer TEXT
+            source_peer TEXT,
+            parent_id TEXT
         )
     """)
 
@@ -72,6 +73,28 @@ def init_db():
         )
     """)
 
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS nicknames (
+            pubkey TEXT PRIMARY KEY,
+            nickname TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+    _migrate()
+
+
+def _migrate():
+    """Safe migrations for existing databases — adds columns if missing."""
+    conn = sqlite3.connect(str(DB_PATH))
+    c = conn.cursor()
+
+    existing_posts = {row[1] for row in c.execute("PRAGMA table_info(posts)").fetchall()}
+    if "parent_id" not in existing_posts:
+        c.execute("ALTER TABLE posts ADD COLUMN parent_id TEXT")
+
     conn.commit()
     conn.close()
 
@@ -87,13 +110,16 @@ def _now():
     return int(datetime.now().timestamp())
 
 
-def save_post(post_id, content, author_pubkey=None, signature=None, timestamp=None, source_peer=None):
+def save_post(post_id, content, author_pubkey=None, signature=None,
+              timestamp=None, source_peer=None, parent_id=None):
     conn = _conn()
     ts = timestamp if timestamp else _now()
     try:
         conn.execute(
-            "INSERT OR IGNORE INTO posts (id, content, author_pubkey, signature, timestamp, received_at, source_peer) VALUES (?,?,?,?,?,?,?)",
-            (post_id, content, author_pubkey, signature, ts, _now(), source_peer),
+            "INSERT OR IGNORE INTO posts "
+            "(id, content, author_pubkey, signature, timestamp, received_at, source_peer, parent_id) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (post_id, content, author_pubkey, signature, ts, _now(), source_peer, parent_id),
         )
         conn.commit()
         return True
@@ -101,12 +127,34 @@ def save_post(post_id, content, author_pubkey=None, signature=None, timestamp=No
         return False
 
 
-def get_posts(limit=100, offset=0):
+def get_posts(limit=100, offset=0, root_only=False):
+    q = ("SELECT id, content, author_pubkey, timestamp, received_at, source_peer, parent_id "
+         "FROM posts")
+    if root_only:
+        q += " WHERE parent_id IS NULL"
+    q += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+    rows = _conn().execute(q, (limit, offset)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_replies(parent_id: str) -> list[dict]:
     rows = _conn().execute(
-        "SELECT id, content, author_pubkey, timestamp, received_at, source_peer FROM posts ORDER BY timestamp DESC LIMIT ? OFFSET ?",
-        (limit, offset),
+        "SELECT id, content, author_pubkey, timestamp, received_at, source_peer, parent_id "
+        "FROM posts WHERE parent_id=? ORDER BY timestamp ASC",
+        (parent_id,),
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+def get_reply_counts(post_ids: list[str]) -> dict[str, int]:
+    if not post_ids:
+        return {}
+    placeholders = ",".join("?" * len(post_ids))
+    rows = _conn().execute(
+        f"SELECT parent_id, COUNT(*) FROM posts WHERE parent_id IN ({placeholders}) GROUP BY parent_id",
+        post_ids,
+    ).fetchall()
+    return {r[0]: r[1] for r in rows}
 
 
 def get_post_ids():
@@ -148,11 +196,34 @@ def update_peer_status(onion_address, is_active):
     conn.commit()
 
 
+def set_nickname(pubkey: str, nickname: str):
+    conn = _conn()
+    conn.execute(
+        "INSERT INTO nicknames (pubkey, nickname, created_at) VALUES (?,?,?) "
+        "ON CONFLICT(pubkey) DO UPDATE SET nickname=excluded.nickname",
+        (pubkey, nickname.strip(), _now()),
+    )
+    conn.commit()
+
+
+def delete_nickname(pubkey: str):
+    conn = _conn()
+    conn.execute("DELETE FROM nicknames WHERE pubkey=?", (pubkey,))
+    conn.commit()
+
+
+def get_nicknames() -> dict[str, str]:
+    rows = _conn().execute("SELECT pubkey, nickname FROM nicknames").fetchall()
+    return {r[0]: r[1] for r in rows}
+
+
 def save_fragment(message_id, seq_num, total_parts, encrypted_blob, session_key=None):
     conn = _conn()
     try:
         conn.execute(
-            "INSERT OR IGNORE INTO fragments (message_id, seq_num, total_parts, encrypted_blob, session_key, received_at) VALUES (?,?,?,?,?,?)",
+            "INSERT OR IGNORE INTO fragments "
+            "(message_id, seq_num, total_parts, encrypted_blob, session_key, received_at) "
+            "VALUES (?,?,?,?,?,?)",
             (message_id, seq_num, total_parts, encrypted_blob, session_key, _now()),
         )
         conn.commit()
@@ -163,7 +234,8 @@ def save_fragment(message_id, seq_num, total_parts, encrypted_blob, session_key=
 
 def get_fragments(message_id):
     rows = _conn().execute(
-        "SELECT seq_num, total_parts, encrypted_blob, session_key FROM fragments WHERE message_id=? ORDER BY seq_num",
+        "SELECT seq_num, total_parts, encrypted_blob, session_key "
+        "FROM fragments WHERE message_id=? ORDER BY seq_num",
         (message_id,),
     ).fetchall()
     return [dict(r) for r in rows]
