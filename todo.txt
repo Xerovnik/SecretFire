@@ -1,0 +1,111 @@
+SecretFire — Development Roadmap
+=================================
+Last updated: 2026-03-17
+
+SECURITY — NEXT RELEASE (do not rush, each needs careful UX design)
+---------------------------------------------------------------------
+[ ] Encrypted identity at rest
+      - Private key and broadcast key currently sit as plain base64 JSON on disk
+      - Disk compromise = permanent identity theft, attacker can impersonate forever
+      - Plan: Argon2id key derivation from a user password + AES-256-GCM envelope
+      - Needs: password prompt on first run, re-encryption on password change,
+        a clear "forgotten password = identity lost" warning, and a separate
+        plaintext backup export option (for users who understand the trade-off)
+
+[ ] Broadcast key rotation
+      - Current broadcast key is static — a leak lets anyone forge messages that
+        every node will accept and decrypt
+      - Plan: generate a new broadcast key every session (or every N hours),
+        distribute it signed with the node's Ed25519 key via a gossip announcement
+      - Needs: a signed key-rotation envelope in the protocol, peer verification
+        of the signature before accepting the new key, and a grace period during
+        which both old and new keys are accepted
+
+[ ] Ed25519-authenticated peer handshakes
+      - Peer lists are currently accepted without any authentication — anyone can
+        inject arbitrary onion addresses into the network via a sync response
+      - Onion address format validation (v0.1.18) is a partial mitigation only
+      - Plan: when syncing, require the remote node to sign its peer list with its
+        Ed25519 key; reject unsigned or incorrectly signed peer lists entirely
+      - Needs: a challenge/response or signed-hello protocol before any sync data
+        is trusted
+
+IN PROGRESS
+-----------
+[ ] v0.1.8 UI + feature sprint (see below)
+
+PLANNED — HIGH PRIORITY
+------------------------
+[ ] Peer discovery / bootstrap server
+      - Well-known .onion that hands out peer lists on request
+      - Opt-in: users can choose not to advertise to bootstrap
+      - Bootstrap server itself should be decentralised/mirrored
+      - Research: can the bootstrap server be another SecretFire node?
+
+[ ] Username system via bootstrap server
+      - Investigate: bootstrap server verifying unique usernames
+      - Alternative: auto-generate a memorable English name from the user's
+        .onion address (deterministic so it's always the same name for that
+        identity) — e.g. "amber-fox-77" derived from onion hash
+      - Username registration should be optional; app works without one
+      - Username change must be authenticated with the node's Ed25519 key
+      - Consider: username + .onion pair signed by bootstrap so others can
+        verify the binding
+
+[ ] Offline message buffering + delivery confirmation
+      - Store outgoing posts for peers that were offline at broadcast time
+      - When peer comes back online, gossip retransmits missing posts
+      - Delivery confirmation: receiving node sends a signed ACK back
+      - ACK must go through Tor (same security as the original message)
+      - Display "delivered" / "pending" indicator per post in UI
+
+[ ] Android app
+      - Investigate: Kivy, BeeWare, or React Native wrapper
+      - Tor on Android: use Orbot integration or bundle Tor for Android (ARM)
+      - Must retain same Ed25519 identity / .onion as desktop if desired
+      - UI should be a clean mobile-first redesign, not a port of the desktop
+
+PLANNED — MEDIUM PRIORITY
+--------------------------
+[ ] Local network (LAN) discovery — mDNS
+      - Use Zeroconf/mDNS to advertise presence on the local network
+      - OFF by default; user must opt in (Settings toggle)
+      - Advertising: broadcast _secretfire._tcp on port FLASK_PORT
+      - Discovery: scan for _secretfire._tcp peers and add them automatically
+      - LAN peers connect directly (no Tor hop needed for same-subnet)
+      - Security note: LAN discovery reveals that you run SecretFire to
+        anyone on the network — hence opt-in only
+
+[ ] Traffic obfuscation / "gray-man" strategy
+      - Make SecretFire's local traffic look as mundane as possible
+      - Flask HTTP server: add headers that look like a generic web app
+      - Randomise gossip intervals slightly to avoid detectable periodicity
+      - Investigate: padding messages to fixed sizes to prevent traffic analysis
+      - The obfs4 bridge fallback (v0.1.6) already handles the Tor layer
+
+[ ] Message threading (PARTIALLY DONE in v0.1.8)
+      - Backend: parent_id stored, reply API exists
+      - Frontend: Instagram-style inline thread expansion
+      - TODO: thread notification (new reply to your post)
+      - TODO: collapse/expand entire thread
+      - TODO: reply depth limit (e.g. max 5 levels shown, "load more" below)
+
+PLANNED — LOWER PRIORITY
+--------------------------
+[ ] Push notifications for new posts / replies (desktop OS notifications)
+[ ] Image attachments (encrypted, stored as fragments)
+[ ] Search across stored posts (local full-text search, never sent to peers)
+[ ] Post expiry / self-delete after N days
+[ ] Blocked peer list (ignore posts from specific pubkeys)
+[ ] Export/backup all posts to local file
+[ ] Multiple identities (switch between .onion addresses)
+[ ] Dark/light theme toggle (dark is default, always)
+
+NOTES
+-----
+- All new protocol features must maintain: Ed25519 signing, AES-256-GCM
+  encryption, Tor routing. Security is non-negotiable.
+- Bootstrap server code should eventually live in this repo as a separate
+  lightweight Python service (not a full SecretFire node).
+- "Gray-man" traffic work should be benchmarked against a baseline capture
+  before and after to verify effectiveness.
