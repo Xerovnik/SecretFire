@@ -206,8 +206,11 @@ def _start_powershell_launcher(new_exe: Path, current_exe: Path,
         f"Move-Item -LiteralPath '{current_exe}' -Destination '{backup_exe}' -ErrorAction SilentlyContinue\n"
         # Copy new binary into the now-vacant original path
         f"Copy-Item -Force -Path '{new_exe}' -Destination '{current_exe}'\n"
-        # Launch updated app
-        f"Start-Process -FilePath '{current_exe}'\n"
+        # Brief pause — ensures Windows has fully flushed the copied exe to disk
+        # before we try to execute it (avoids "Python DLL" load errors on first launch)
+        "Start-Sleep -Seconds 2\n"
+        # Launch updated app from its own directory so relative paths resolve correctly
+        f"Start-Process -FilePath '{current_exe}' -WorkingDirectory '{current_exe.parent}'\n"
         # Give the new app a moment to start, then clean up
         "Start-Sleep -Seconds 3\n"
         f"Remove-Item -Force -LiteralPath '{backup_exe}' -ErrorAction SilentlyContinue\n"
