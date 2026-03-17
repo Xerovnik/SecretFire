@@ -196,6 +196,7 @@ function renderPeersTab() {
   el.innerHTML = appState.peers.map(p => {
     const nick   = appState.nicknames[p.onion_address] || "";
     const active = p.is_active;
+    const verified = p.auth_verified;
     return `<div class="peer-full-item">
       <div class="peer-dot ${active ? "active" : "inactive"}"></div>
       <div class="peer-nick-display">
@@ -203,6 +204,7 @@ function renderPeersTab() {
         <div class="peer-nick-addr">${esc(p.onion_address)}</div>
       </div>
       <span class="peer-status-tag ${active ? "active" : "inactive"}">${active ? "Active" : "Inactive"}</span>
+      <span class="peer-status-tag" style="background:${verified ? "rgba(0,229,255,.13)" : "rgba(156,111,255,.1)"};color:${verified ? "var(--cyan)" : "var(--purple)"};" title="${verified ? "Ed25519 identity verified" : "Awaiting challenge-response"}">${verified ? "✓ Verified" : "Unverified"}</span>
       <button class="btn btn-ghost btn-sm" onclick='promptNickname("${esc(p.onion_address)}")'>Nickname</button>
     </div>`;
   }).join("");

@@ -95,6 +95,12 @@ def _migrate():
     if "parent_id" not in existing_posts:
         c.execute("ALTER TABLE posts ADD COLUMN parent_id TEXT")
 
+    existing_peers = {row[1] for row in c.execute("PRAGMA table_info(peers)").fetchall()}
+    if "auth_pubkey" not in existing_peers:
+        c.execute("ALTER TABLE peers ADD COLUMN auth_pubkey TEXT")
+    if "auth_verified" not in existing_peers:
+        c.execute("ALTER TABLE peers ADD COLUMN auth_verified INTEGER DEFAULT 0")
+
     conn.commit()
     conn.close()
 
@@ -179,7 +185,7 @@ def save_peer(onion_address):
 
 
 def get_peers(active_only=False):
-    q = "SELECT onion_address, last_seen, is_active, posts_shared FROM peers"
+    q = "SELECT onion_address, last_seen, is_active, posts_shared, auth_pubkey, auth_verified FROM peers"
     if active_only:
         q += " WHERE is_active=1"
     q += " ORDER BY last_seen DESC"
@@ -194,6 +200,32 @@ def update_peer_status(onion_address, is_active):
         (1 if is_active else 0, _now(), onion_address),
     )
     conn.commit()
+
+
+def set_peer_auth(onion_address: str, pubkey: str, verified: bool) -> None:
+    """Persist a peer's claimed Ed25519 public key and verification status.
+
+    Safe to call on a peer that doesn't exist yet — save_peer must be called
+    first (which is always done when processing any inbound sync request).
+    If the peer row is missing this is a no-op to avoid creating ghost rows.
+    """
+    conn = _conn()
+    conn.execute(
+        "UPDATE peers SET auth_pubkey=?, auth_verified=? WHERE onion_address=?",
+        (pubkey, 1 if verified else 0, onion_address),
+    )
+    conn.commit()
+
+
+def get_peer_auth(onion_address: str) -> dict | None:
+    """Return {auth_pubkey, auth_verified} for a peer, or None if not found."""
+    row = _conn().execute(
+        "SELECT auth_pubkey, auth_verified FROM peers WHERE onion_address=?",
+        (onion_address,),
+    ).fetchone()
+    if row is None:
+        return None
+    return {"auth_pubkey": row["auth_pubkey"], "auth_verified": bool(row["auth_verified"])}
 
 
 def set_nickname(pubkey: str, nickname: str):

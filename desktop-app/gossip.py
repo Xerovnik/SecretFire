@@ -41,6 +41,7 @@ import requests
 import storage
 import protocol
 import crypto_utils
+import peer_auth as _peer_auth_mod
 from config import GOSSIP_INTERVAL, TOR_HIDDEN_SERVICE_PORT
 
 logger = logging.getLogger("gossip")
@@ -102,6 +103,8 @@ class GossipManager:
 
         self._frag_bucket: deque = deque()
         self._frag_lock = threading.Lock()
+
+        self._auth = _peer_auth_mod.PeerAuthenticator()
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -268,18 +271,38 @@ class GossipManager:
             current_key    = self.broadcast_key
             current_key_id = self.key_id
 
+        our_onion  = self.tor.onion_address
+        our_pubkey = self.identity.get("ed25519_public", "")
+
         payload = {
-            "from":           self.tor.onion_address,
+            "from":           our_onion,
             "known_post_ids": list(my_post_ids),
             "broadcast_key":  base64.b64encode(current_key).decode(),
             "key_id":         current_key_id,
+            "node_pubkey":    our_pubkey,
         }
+
+        # If this peer previously challenged us, include the signed response
+        if self._auth.has_pending_challenge(onion_address) and our_onion:
+            sig = self._auth.build_challenge_response(
+                peer_onion=onion_address,
+                our_onion=our_onion,
+                ed25519_private_b64=self.identity.get("ed25519_private", ""),
+            )
+            if sig:
+                payload["challenge_response"] = sig
+                logger.debug(f"Sending challenge response to {onion_address}")
 
         resp = session.post(url, json=payload, timeout=20)
         if resp.status_code != 200:
             return
 
         data = resp.json()
+
+        # Store any challenge the peer issued to us for the next sync cycle
+        auth_challenge = data.get("auth_challenge")
+        if auth_challenge:
+            self._auth.store_received_challenge(onion_address, auth_challenge)
 
         peer_sig = data.get("peer_signature")
         if peer_sig and self._verify_peer_list(peer_sig):
@@ -473,8 +496,10 @@ class GossipManager:
     # ------------------------------------------------------------------
 
     def handle_sync_request(self, data: dict) -> dict:
-        from_peer = data.get("from", "")
-        known_ids = set(data.get("known_post_ids", []))
+        from_peer         = data.get("from", "")
+        known_ids         = set(data.get("known_post_ids", []))
+        node_pubkey       = data.get("node_pubkey", "")
+        challenge_response = data.get("challenge_response", "")
 
         if from_peer and from_peer != self.tor.onion_address:
             if _is_valid_onion(from_peer):
@@ -483,6 +508,28 @@ class GossipManager:
                 logger.warning(
                     f"Sync request from invalid onion address: {from_peer!r}"
                 )
+                from_peer = ""
+
+        # --- Challenge-response authentication ----------------------------
+        if from_peer and node_pubkey:
+            # Reject if this peer was previously verified with a different key
+            if not self._auth.check_pubkey_claim(from_peer, node_pubkey):
+                logger.warning(
+                    f"Rejecting sync from {from_peer[:20]}… — pubkey mismatch"
+                )
+                # Still issue posts (don't starve the network), but don't verify
+            elif challenge_response:
+                # Peer is responding to a challenge we issued previously
+                self._auth.verify_response(from_peer, node_pubkey, challenge_response)
+            else:
+                # First contact or no response yet — persist the claimed pubkey
+                self._auth.store_pubkey(from_peer, node_pubkey)
+
+        # Issue a fresh challenge for this peer (always, regardless of state)
+        auth_challenge = None
+        if from_peer and node_pubkey:
+            auth_challenge = self._auth.issue_challenge(from_peer)
+        # ------------------------------------------------------------------
 
         all_posts = storage.get_posts(limit=100)
         new_posts = [p for p in all_posts if p["id"] not in known_ids]
@@ -496,15 +543,15 @@ class GossipManager:
         with self._key_lock:
             current_key_id = self.key_id
 
-        return {
+        response = {
             "posts": [
                 {
-                    "post_id":      p["id"],
-                    "content":      p["content"],
+                    "post_id":       p["id"],
+                    "content":       p["content"],
                     "author_pubkey": p.get("author_pubkey"),
-                    "signature":    p.get("signature"),
-                    "timestamp":    p["timestamp"],
-                    "parent_id":    p.get("parent_id"),
+                    "signature":     p.get("signature"),
+                    "timestamp":     p["timestamp"],
+                    "parent_id":     p.get("parent_id"),
                 }
                 for p in new_posts[:50]
             ],
@@ -512,3 +559,6 @@ class GossipManager:
             "peer_signature": signed_peers,
             "key_id":         current_key_id,
         }
+        if auth_challenge:
+            response["auth_challenge"] = auth_challenge
+        return response
