@@ -137,6 +137,16 @@ async function pollStatus() {
     if (tp) tp.textContent = tor.using_bridges ? "obfs4" : "Direct";
     const ts = document.getElementById("tor-socks");
     if (ts) ts.textContent = tor.socks_port ? `:${tor.socks_port}` : "\u2014";
+    const sb = document.getElementById("tor-sandbox");
+    if (sb) {
+      if (tor.demo_mode || !tor.connected) {
+        sb.textContent = "\u2014";
+        sb.className = "tor-val";
+      } else {
+        sb.textContent = tor.sandbox_enabled ? "On" : "Off";
+        sb.className = "tor-val " + (tor.sandbox_enabled ? "cyan" : "yellow");
+      }
+    }
     const nv = document.getElementById("node-id-val");
     if (nv) nv.textContent = (data.node_id || "\u2014").slice(0,12) + "\u2026";
   } catch (_) {

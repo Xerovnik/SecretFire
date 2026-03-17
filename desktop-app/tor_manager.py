@@ -131,6 +131,8 @@ class TorManager:
         self.is_running = False
         self.demo_mode = False
         self.using_bridges = False
+        self.sandbox_enabled = False   # updated after successful start
+        self._sandbox_failed = False   # set by bootstrap monitor if Sandbox 1 rejected
         self._lock = threading.Lock()
 
     # ------------------------------------------------------------------
@@ -210,7 +212,8 @@ class TorManager:
                 except OSError:
                     logger.warning("Still cannot remove lock file — Tor may fail to start")
 
-    def _write_torrc(self, bridges: list[str] | None = None) -> Path:
+    def _write_torrc(self, bridges: list[str] | None = None,
+                     enable_sandbox: bool = True) -> Path:
         TOR_DATA_DIR.mkdir(parents=True, exist_ok=True)
         TOR_DATA_DIR.chmod(0o700)
         TOR_HIDDEN_SERVICE_DIR.mkdir(parents=True, exist_ok=True)
@@ -231,20 +234,28 @@ class TorManager:
                 logger.warning("Skipping bridge config — PT binary not found")
 
         torrc_path = TOR_DATA_DIR / "torrc"
-        # Tor's seccomp-based Sandbox is only supported on Linux.
-        # On Windows and macOS it causes startup errors, so we leave it off there.
-        sandbox = "1" if platform.system().lower() == "linux" else "0"
 
+        # Tor's seccomp-based Sandbox is only supported on Linux.
+        # On Windows and macOS it causes startup errors, so we leave it off.
+        # enable_sandbox=False is used as a fallback if the first attempt fails.
+        use_sandbox = enable_sandbox and platform.system().lower() == "linux"
+        sandbox = "1" if use_sandbox else "0"
+
+        # IsolateDestAddr: each gossip peer gets its own Tor circuit.
+        # OnionTrafficOnly: reject any accidental clearnet traffic through
+        #                   this port — all our peer connections are .onion.
         torrc_content = (
-            f"SocksPort {self.socks_port}\n"
+            f"SocksPort {self.socks_port} IsolateDestAddr OnionTrafficOnly\n"
             f"DataDirectory {TOR_DATA_DIR}\n"
             f"HiddenServiceDir {TOR_HIDDEN_SERVICE_DIR}\n"
             f"HiddenServicePort 80 127.0.0.1:{FLASK_PORT}\n"
             f"Log notice stdout\n"
-            f"Sandbox {sandbox}"
+            f"Sandbox {sandbox}\n"
             f"{bridge_block}"
         )
         torrc_path.write_text(torrc_content)
+        logger.info(f"torrc written — Sandbox={'1' if use_sandbox else '0'}, "
+                    f"SocksPort={self.socks_port}")
         return torrc_path
 
     # ------------------------------------------------------------------
@@ -284,10 +295,20 @@ class TorManager:
             return True
 
         try:
-            # --- Attempt 1: direct connection ---
+            # --- Attempt 1: direct connection (with Sandbox 1 on Linux) ---
             logger.info("Attempting direct Tor connection…")
             torrc = self._write_torrc()
             success = self._launch_tor(tor_bin, torrc, tor_env)
+
+            # --- Attempt 1b: Sandbox 1 rejected by this build — retry without it ---
+            if not success and self._sandbox_failed:
+                logger.warning(
+                    "Sandbox 1 rejected by this Tor build/kernel — "
+                    "retrying direct connection with Sandbox 0"
+                )
+                self._sandbox_failed = False
+                torrc = self._write_torrc(enable_sandbox=False)
+                success = self._launch_tor(tor_bin, torrc, tor_env)
 
             if not success:
                 logger.warning(
@@ -298,7 +319,11 @@ class TorManager:
                 # Try to get fresh bridges; fall back to hardcoded
                 bridges = _fetch_bridges_from_moat() or _DEFAULT_BRIDGES
 
-                torrc = self._write_torrc(bridges=bridges)
+                # Keep sandbox disabled if it already failed once
+                torrc = self._write_torrc(
+                    bridges=bridges,
+                    enable_sandbox=not self._sandbox_failed,
+                )
                 pt_bin = self._find_pt_binary()
 
                 if pt_bin:
@@ -306,6 +331,18 @@ class TorManager:
                         f"Retrying Tor with {len(bridges)} obfs4 bridge(s) via {pt_bin.name}…"
                     )
                     success = self._launch_tor(tor_bin, torrc, tor_env)
+
+                    # Sandbox may still fail on bridge retry too
+                    if not success and self._sandbox_failed:
+                        logger.warning(
+                            "Sandbox also rejected on bridge retry — "
+                            "final attempt with Sandbox 0"
+                        )
+                        self._sandbox_failed = False
+                        torrc = self._write_torrc(
+                            bridges=bridges, enable_sandbox=False
+                        )
+                        success = self._launch_tor(tor_bin, torrc, tor_env)
                 else:
                     logger.warning(
                         "Bridge retry skipped — obfs4 binary unavailable in bundle"
@@ -320,6 +357,13 @@ class TorManager:
                 self.is_running = True
                 return True
 
+            self.sandbox_enabled = (
+                platform.system().lower() == "linux" and not self._sandbox_failed
+            )
+            logger.info(
+                f"Tor running — Sandbox={'enabled' if self.sandbox_enabled else 'disabled'}, "
+                f"IsolateDestAddr=enabled, OnionTrafficOnly=enabled"
+            )
             self._read_onion_address()
             self.is_running = True
             return True
@@ -338,10 +382,21 @@ class TorManager:
     # Bootstrap monitoring
     # ------------------------------------------------------------------
 
+    # Patterns that indicate Tor rejected Sandbox 1 on this build/kernel.
+    _SANDBOX_FAIL_PATTERNS = (
+        "failed to set up sandbox",
+        "sandbox: ",
+        "seccomp",
+        "sandbox failed",
+    )
+
     def _wait_for_bootstrap(self, timeout: int = 30) -> bool:
         """
         Read Tor stdout until bootstrap reaches 100% or timeout elapses.
         Returns True on success, False on failure/timeout.
+
+        As a side-effect, sets self._sandbox_failed = True if Tor logs a
+        sandbox-related error, so the caller can retry without Sandbox 1.
         """
         if not self.process:
             return False
@@ -370,6 +425,14 @@ class TorManager:
 
             if "Problem bootstrapping" in line:
                 logger.warning(f"Tor bootstrap problem: {line.strip()}")
+
+            # Detect Sandbox 1 rejection so start() can retry with Sandbox 0.
+            line_lower = line.lower()
+            if any(p in line_lower for p in self._SANDBOX_FAIL_PATTERNS):
+                logger.warning(
+                    f"Sandbox failure detected in Tor output: {line.strip()}"
+                )
+                self._sandbox_failed = True
 
         logger.warning(f"Tor bootstrap timed out after {timeout}s")
         return False
@@ -427,6 +490,7 @@ class TorManager:
             "running": self.is_running,
             "demo_mode": self.demo_mode,
             "using_bridges": self.using_bridges,
+            "sandbox_enabled": self.sandbox_enabled,
             "onion_address": self.onion_address,
             "socks_port": self.socks_port if not self.demo_mode else None,
         }
