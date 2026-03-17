@@ -61,7 +61,7 @@ def create_app(tor_manager, gossip_manager, node_identity: dict) -> Flask:
         stats = storage.get_stats()
         return jsonify({
             "app": "SecretFire",
-            "version": "0.1.8",
+            "version": "0.1.8.1",
             "tor": tor_status,
             "node_id": node_identity.get("node_id", "unknown"),
             "public_key": node_identity.get("ed25519_public", ""),
