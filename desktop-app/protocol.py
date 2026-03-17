@@ -24,15 +24,19 @@ Packet format (per fragment):
   [8 bytes]  timestamp (big-endian unix)
   [8 bytes]  HMAC-SHA256[:8]
   [N bytes]  encrypted payload (CHUNK_SIZE max)
-  [padding]  random bytes to fixed packet size
-
-Total wire size: HEADER_SIZE(36) + encrypted_payload
 
 AES-GCM AAD:
   Each encrypted payload is authenticated with the associated data:
     msg_id (16 bytes) | seq_num (2 bytes, big-endian) | total_parts (2 bytes)
   This binds the ciphertext cryptographically to the fragment's position,
   preventing reordering or splicing attacks on individual fragments.
+
+Message padding (traffic analysis resistance):
+  Before fragmentation the plaintext is padded to the next fixed bucket size
+  (256, 512, 1024, 2048, or 4096 bytes) using random bytes.  The last 2 bytes
+  store the original length as a big-endian uint16, allowing exact recovery
+  after reassembly.  This makes it significantly harder for a passive observer
+  to infer message content from ciphertext length.
 """
 
 import os
@@ -45,6 +49,46 @@ from crypto_utils import encrypt_chunk, decrypt_chunk, compute_hmac, verify_hmac
 CHUNK_SIZE = 460
 PACKET_SIZE = 512
 
+# Fixed bucket sizes for message-level padding (bytes).
+# The 2-byte length footer is included in the budget.
+_PAD_BUCKETS = (256, 512, 1024, 2048, 4096)
+
+
+# ---------------------------------------------------------------------------
+# Message-level padding
+# ---------------------------------------------------------------------------
+
+def _pad_message(data: bytes) -> bytes:
+    """Pad plaintext to the next fixed bucket size using random bytes.
+
+    Layout: [original data] [random padding] [2-byte big-endian original length]
+
+    If the data is larger than all buckets (very long message), a zero-length
+    sentinel is appended so unpadding always works correctly.
+    """
+    orig_len = len(data)
+    target = next((b for b in _PAD_BUCKETS if b >= orig_len + 2), None)
+    if target is None:
+        return data + struct.pack(">H", 0)
+    pad_len = target - orig_len - 2
+    return data + os.urandom(pad_len) + struct.pack(">H", orig_len)
+
+
+def _unpad_message(data: bytes) -> bytes:
+    """Strip padding added by _pad_message and return the original bytes."""
+    if len(data) < 2:
+        return data
+    orig_len = struct.unpack(">H", data[-2:])[0]
+    if orig_len == 0:
+        return data[:-2]
+    if orig_len > len(data) - 2:
+        return data
+    return data[:orig_len]
+
+
+# ---------------------------------------------------------------------------
+# Fragment helpers
+# ---------------------------------------------------------------------------
 
 def _fragment_aad(msg_id: bytes, seq: int, total: int) -> bytes:
     """Build the associated data that binds a ciphertext to its position."""
@@ -57,11 +101,15 @@ def _pad_to(data: bytes, target: int) -> bytes:
     return data + os.urandom(target - len(data))
 
 
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
 def fragment_message(message: str, session_key: bytes = None) -> tuple[list[bytes], bytes, str]:
     if session_key is None:
         session_key = generate_broadcast_key()
 
-    msg_bytes = message.encode("utf-8")
+    msg_bytes = _pad_message(message.encode("utf-8"))
     chunks = [msg_bytes[i:i + CHUNK_SIZE] for i in range(0, len(msg_bytes), CHUNK_SIZE)]
     if not chunks:
         chunks = [b""]
@@ -125,10 +173,9 @@ def reassemble_fragments(
     session_key: bytes,
     msg_id_bytes: bytes = None,
 ) -> str | None:
-    """Decrypt and reassemble ordered fragments.
+    """Decrypt, reassemble, and unpad ordered fragments.
 
-    msg_id_bytes must be the raw 16-byte message ID when AAD is in use
-    (i.e. for fragments produced by this version of the protocol).
+    msg_id_bytes must be the raw 16-byte message ID when AAD is in use.
     Pass None only when processing legacy fragments without AAD.
     """
     try:
@@ -139,7 +186,8 @@ def reassemble_fragments(
             aad = _fragment_aad(msg_id_bytes, seq, total) if msg_id_bytes is not None else None
             chunk = decrypt_chunk(encrypted_payload, session_key, aad=aad)
             chunks.append(chunk)
-        return b"".join(chunks).decode("utf-8")
+        raw = b"".join(chunks)
+        return _unpad_message(raw).decode("utf-8")
     except Exception:
         return None
 

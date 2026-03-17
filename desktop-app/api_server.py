@@ -31,7 +31,7 @@ from flask_cors import CORS
 import storage
 import crypto_utils
 import log_buffer
-from config import KEY_FILE, APP_VERSION
+from config import APP_VERSION
 
 logger = logging.getLogger("api_server")
 
@@ -42,7 +42,6 @@ def _save_file_dialog(default_name: str, content: str) -> str | None:
     """
     Open a native OS save-file dialog and write `content` to the chosen path.
     Returns the saved path, or None if the user cancelled.
-    Works on Windows, Linux (X11), and macOS.
     """
     try:
         import tkinter as tk
@@ -64,8 +63,6 @@ def _save_file_dialog(default_name: str, content: str) -> str | None:
         return path
     except Exception as e:
         logger.error(f"Save dialog failed: {e}")
-        # Fallback: save to Downloads folder
-        import os
         downloads = Path(os.path.expanduser("~/Downloads"))
         downloads.mkdir(parents=True, exist_ok=True)
         fallback = downloads / default_name
@@ -73,7 +70,72 @@ def _save_file_dialog(default_name: str, content: str) -> str | None:
         return str(fallback)
 
 
-def create_app(tor_manager, gossip_manager, node_identity: dict) -> Flask:
+def _prompt_import_password(title: str, message: str, confirm: bool = True) -> str | None:
+    """Show a native password dialog for import re-encryption. Returns password or None."""
+    try:
+        import tkinter as tk
+        from tkinter import messagebox
+        result = [None]
+        root = tk.Tk()
+        root.withdraw()
+        dlg = tk.Toplevel(root)
+        dlg.title(title)
+        dlg.resizable(False, False)
+        dlg.grab_set()
+        dlg.attributes("-topmost", True)
+        frame = tk.Frame(dlg, padx=24, pady=16)
+        frame.pack(fill="both", expand=True)
+        tk.Label(frame, text=message, wraplength=340, justify="left", pady=4).pack(anchor="w")
+        tk.Label(frame, text="Password:", pady=(10, 2)).pack(anchor="w")
+        pw_entry = tk.Entry(frame, show="*", width=38)
+        pw_entry.pack(fill="x")
+        pw_entry.focus_set()
+        pw2_entry = None
+        if confirm:
+            tk.Label(frame, text="Confirm password:", pady=(8, 2)).pack(anchor="w")
+            pw2_entry = tk.Entry(frame, show="*", width=38)
+            pw2_entry.pack(fill="x")
+
+        def on_ok(event=None):
+            pw = pw_entry.get()
+            if not pw:
+                messagebox.showerror("Error", "Password cannot be empty.", parent=dlg)
+                return
+            if confirm and pw2_entry and pw != pw2_entry.get():
+                messagebox.showerror("Error", "Passwords do not match.", parent=dlg)
+                return
+            result[0] = pw
+            dlg.destroy()
+            root.destroy()
+
+        def on_cancel():
+            dlg.destroy()
+            root.destroy()
+
+        btn = tk.Frame(frame, pady=12)
+        btn.pack()
+        tk.Button(btn, text="OK",     command=on_ok,     width=10).pack(side="left", padx=5)
+        tk.Button(btn, text="Cancel", command=on_cancel, width=10).pack(side="left", padx=5)
+        dlg.bind("<Return>", on_ok)
+        dlg.bind("<Escape>", lambda e: on_cancel())
+        dlg.update_idletasks()
+        w, h = dlg.winfo_reqwidth(), dlg.winfo_reqheight()
+        x = (dlg.winfo_screenwidth()  - w) // 2
+        y = (dlg.winfo_screenheight() - h) // 2
+        dlg.geometry(f"+{x}+{y}")
+        root.mainloop()
+        return result[0]
+    except Exception as e:
+        logger.error(f"Import password dialog failed: {e}")
+        return None
+
+
+def create_app(
+    tor_manager,
+    gossip_manager,
+    node_identity: dict,
+    identity_manager=None,
+) -> Flask:
     app = Flask(__name__, static_folder=str(WEB_DIR))
     CORS(app)
 
@@ -92,17 +154,16 @@ def create_app(tor_manager, gossip_manager, node_identity: dict) -> Flask:
     @app.route("/api/status")
     def status():
         tor_status = tor_manager.status()
-        # Normalise: older tor_manager returns "running" not "connected"
         if "connected" not in tor_status:
             tor_status["connected"] = tor_status.get("running", False)
         stats = storage.get_stats()
         return jsonify({
-            "app": "SecretFire",
-            "version": APP_VERSION,
-            "tor": tor_status,
-            "node_id": node_identity.get("node_id", "unknown"),
+            "app":        "SecretFire",
+            "version":    APP_VERSION,
+            "tor":        tor_status,
+            "node_id":    node_identity.get("node_id", "unknown"),
             "public_key": node_identity.get("ed25519_public", ""),
-            "stats": stats,
+            "stats":      stats,
         })
 
     # ------------------------------------------------------------------ #
@@ -111,24 +172,24 @@ def create_app(tor_manager, gossip_manager, node_identity: dict) -> Flask:
 
     @app.route("/api/posts", methods=["GET"])
     def get_posts():
-        limit = min(int(request.args.get("limit", 50)), 200)
-        offset = int(request.args.get("offset", 0))
+        limit     = min(int(request.args.get("limit", 50)), 200)
+        offset    = int(request.args.get("offset", 0))
         root_only = request.args.get("root_only", "0") == "1"
-        posts = storage.get_posts(limit=limit, offset=offset, root_only=root_only)
+        posts     = storage.get_posts(limit=limit, offset=offset, root_only=root_only)
 
-        post_ids = [p["id"] for p in posts]
+        post_ids     = [p["id"] for p in posts]
         reply_counts = storage.get_reply_counts(post_ids)
-        nicknames = storage.get_nicknames()
+        nicknames    = storage.get_nicknames()
 
         for p in posts:
-            p["reply_count"] = reply_counts.get(p["id"], 0)
+            p["reply_count"]    = reply_counts.get(p["id"], 0)
             p["author_nickname"] = nicknames.get(p.get("author_pubkey", ""), None)
 
         return jsonify({"posts": posts, "count": len(posts)})
 
     @app.route("/api/posts/<post_id>/replies", methods=["GET"])
     def get_replies(post_id):
-        replies = storage.get_replies(post_id)
+        replies   = storage.get_replies(post_id)
         nicknames = storage.get_nicknames()
         for r in replies:
             r["author_nickname"] = nicknames.get(r.get("author_pubkey", ""), None)
@@ -147,13 +208,12 @@ def create_app(tor_manager, gossip_manager, node_identity: dict) -> Flask:
             return jsonify({"error": "Post too long (max 500 chars)"}), 400
 
         parent_id = data.get("parent_id") or None
-
-        post_id = str(uuid.uuid4())
-        ts = int(time.time())
+        post_id   = str(uuid.uuid4())
+        ts        = int(time.time())
 
         signature = crypto_utils.sign_post(
             content + post_id,
-            node_identity["ed25519_private"]
+            node_identity["ed25519_private"],
         )
 
         ok = storage.save_post(
@@ -170,12 +230,12 @@ def create_app(tor_manager, gossip_manager, node_identity: dict) -> Flask:
             return jsonify({"error": "Failed to save post"}), 500
 
         post_envelope = {
-            "post_id": post_id,
-            "content": content,
+            "post_id":      post_id,
+            "content":      content,
             "author_pubkey": node_identity["ed25519_public"],
-            "signature": signature,
-            "timestamp": ts,
-            "parent_id": parent_id,
+            "signature":    signature,
+            "timestamp":    ts,
+            "parent_id":    parent_id,
         }
 
         try:
@@ -243,16 +303,14 @@ def create_app(tor_manager, gossip_manager, node_identity: dict) -> Flask:
 
     @app.route("/api/identity/export", methods=["GET"])
     def export_identity():
-        if not KEY_FILE.exists():
-            return jsonify({"error": "No identity found"}), 404
+        """Return the in-memory identity as a JSON backup (plaintext — warn user)."""
         try:
-            identity = json.loads(KEY_FILE.read_text())
             backup = {
                 "secretfire_identity_backup": True,
-                "backup_version": "1",
-                "node_id": identity.get("node_id"),
-                "ed25519_public": identity.get("ed25519_public"),
-                "ed25519_private": identity.get("ed25519_private"),
+                "backup_version":  "2",
+                "node_id":         node_identity.get("node_id"),
+                "ed25519_public":  node_identity.get("ed25519_public"),
+                "ed25519_private": node_identity.get("ed25519_private"),
             }
             return jsonify(backup)
         except Exception as e:
@@ -260,24 +318,21 @@ def create_app(tor_manager, gossip_manager, node_identity: dict) -> Flask:
 
     @app.route("/api/identity/export-file", methods=["POST"])
     def export_identity_to_file():
-        """Open a native OS save-file dialog and write the identity JSON there."""
-        if not KEY_FILE.exists():
-            return jsonify({"error": "No identity found"}), 404
+        """Open a native OS save dialog and write the identity JSON there."""
         try:
-            identity = json.loads(KEY_FILE.read_text())
             backup = {
                 "secretfire_identity_backup": True,
-                "backup_version": "1",
-                "node_id": identity.get("node_id"),
-                "ed25519_public": identity.get("ed25519_public"),
-                "ed25519_private": identity.get("ed25519_private"),
+                "backup_version":  "2",
+                "node_id":         node_identity.get("node_id"),
+                "ed25519_public":  node_identity.get("ed25519_public"),
+                "ed25519_private": node_identity.get("ed25519_private"),
             }
-            content = json.dumps(backup, indent=2)
-            raw_id = (identity.get('node_id') or '')
-            safe_id = re.sub(r'[^a-zA-Z0-9_-]', '', raw_id)[:8]
-            default_name = f"secretfire-identity-{safe_id}.json"
+            content  = json.dumps(backup, indent=2)
+            raw_id   = (node_identity.get("node_id") or "")
+            safe_id  = re.sub(r"[^a-zA-Z0-9_-]", "", raw_id)[:8]
+            default  = f"secretfire-identity-{safe_id}.json"
 
-            saved_path = _save_file_dialog(default_name, content)
+            saved_path = _save_file_dialog(default, content)
             if saved_path is None:
                 return jsonify({"cancelled": True})
             return jsonify({"success": True, "path": saved_path})
@@ -287,24 +342,41 @@ def create_app(tor_manager, gossip_manager, node_identity: dict) -> Flask:
 
     @app.route("/api/identity/import", methods=["POST"])
     def import_identity():
+        """
+        Accept a plaintext identity JSON backup, prompt the user for a new
+        password via a native dialog, encrypt it with IdentityManager, and
+        save.  The app must be restarted to load the new identity.
+        """
         data = request.get_json()
         if not data or not data.get("secretfire_identity_backup"):
             return jsonify({"error": "Invalid backup file format"}), 400
         required = {"node_id", "ed25519_public", "ed25519_private"}
         if not required.issubset(data.keys()):
             return jsonify({"error": "Backup is missing required fields"}), 400
+
+        if identity_manager is None:
+            return jsonify({"error": "Identity manager not available"}), 500
+
         try:
-            identity = {
-                "node_id": data["node_id"],
-                "ed25519_public": data["ed25519_public"],
+            pw = _prompt_import_password(
+                "SecretFire — Set Password for Imported Identity",
+                "Set a password to encrypt the imported identity.\n\n"
+                "You will need this password every time you start SecretFire.",
+                confirm=True,
+            )
+            if pw is None:
+                return jsonify({"cancelled": True})
+
+            new_identity = {
+                "node_id":         data["node_id"],
+                "ed25519_public":  data["ed25519_public"],
                 "ed25519_private": data["ed25519_private"],
             }
-            KEY_FILE.parent.mkdir(parents=True, exist_ok=True)
-            KEY_FILE.write_text(json.dumps(identity, indent=2))
+            identity_manager.migrate_legacy(new_identity, pw)
             return jsonify({
-                "success": True,
-                "node_id": identity["node_id"],
-                "message": "Identity imported. Restart SecretFire to apply."
+                "success":  True,
+                "node_id":  new_identity["node_id"],
+                "message":  "Identity imported and encrypted. Restart SecretFire to apply.",
             })
         except Exception as e:
             return jsonify({"error": str(e)}), 500
@@ -337,8 +409,10 @@ def create_app(tor_manager, gossip_manager, node_identity: dict) -> Flask:
     # Auto-update
     # ------------------------------------------------------------------ #
 
-    _update_cache: dict = {"checked": False, "result": None}
-    _download_state: dict = {"status": "idle", "progress": 0, "error": None, "path": None}
+    _update_cache:   dict = {"checked": False, "result": None}
+    _download_state: dict = {
+        "status": "idle", "progress": 0, "error": None, "path": None
+    }
 
     @app.route("/api/update/check", methods=["GET"])
     def update_check():
@@ -346,12 +420,15 @@ def create_app(tor_manager, gossip_manager, node_identity: dict) -> Flask:
         force = request.args.get("force") == "1"
         if not _update_cache["checked"] or force:
             result = _updater.check_for_update()
-            _update_cache["result"] = result
+            _update_cache["result"]  = result
             _update_cache["checked"] = True
         r = _update_cache["result"]
         if r is None:
-            return jsonify({"update_available": False, "error": "check failed",
-                            "current": node_identity.get("version", "unknown")})
+            return jsonify({
+                "update_available": False,
+                "error":   "check failed",
+                "current": node_identity.get("version", "unknown"),
+            })
         return jsonify(r)
 
     @app.route("/api/update/download", methods=["POST"])
@@ -361,13 +438,14 @@ def create_app(tor_manager, gossip_manager, node_identity: dict) -> Flask:
         if _download_state["status"] == "downloading":
             return jsonify({"error": "Already downloading"}), 409
         info = _update_cache.get("result") or {}
-        url = info.get("download_url")
+        url  = info.get("download_url")
         if not url:
             return jsonify({"error": "No download URL — check for updates first"}), 400
 
         def _run():
-            _download_state.update({"status": "downloading", "progress": 0,
-                                    "error": None, "path": None})
+            _download_state.update({
+                "status": "downloading", "progress": 0, "error": None, "path": None
+            })
             try:
                 def _prog(pct):
                     _download_state["progress"] = pct
@@ -424,13 +502,14 @@ def create_app(tor_manager, gossip_manager, node_identity: dict) -> Flask:
             return jsonify({"error": "fragment required"}), 400
         ok = gossip_manager.receive_fragment(
             data["fragment"],
-            data.get("broadcast_key")
+            broadcast_key_b64=data.get("broadcast_key"),
+            key_id=data.get("key_id"),
         )
         return jsonify({"success": ok})
 
     @app.route("/api/sync", methods=["POST"])
     def sync_handler():
-        data = request.get_json() or {}
+        data   = request.get_json() or {}
         result = gossip_manager.handle_sync_request(data)
         return jsonify(result)
 
