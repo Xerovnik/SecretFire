@@ -101,7 +101,27 @@ def wait_for_server(port: int, timeout: float = 15.0) -> bool:
     return False
 
 
+def _hide_console_window():
+    """
+    On Windows, hide the separate console window if one is present.
+    Works whether running from source or a console=True PyInstaller binary.
+    No-op on macOS/Linux and when there is no console window to hide.
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, 0)  # SW_HIDE = 0
+    except Exception:
+        pass
+
+
 def start_server(app) -> threading.Thread:
+    # Suppress the noisy but harmless waitress task-queue depth warning
+    logging.getLogger("waitress.queue").setLevel(logging.ERROR)
+
     def _run():
         try:
             from waitress import serve
@@ -196,13 +216,13 @@ def open_window(port: int):
 
 def main():
     print(r"""
-                             __  _______
-   ________  _____________  / /_/ ____(_)_______
-  / ___/ _ \/ ___/ ___/ _ \/ __/ /_  / / ___/ _ \
- (__  )  __/ /__/ /  /  __/ /_/ __/ / / /  /  __/
-/____/\___/\___/_/   \___/\__/_/   /_/_/   \___/
+  ____                    _   _____ _
+ / ___|  ___  ___ _ __ __|_||  ___(_)_ __ ___
+ \___ \ / _ \/ __| '__/ _ \ || |_  | | '__/ _ \
+  ___) |  __/ (__| | |  __/ ||  _| | | | |  __/
+ |____/ \___|\___|_|  \___|_||_|   |_|_|  \___|
 
-  Anonymous P2P Microblogging  v0.1.8  (YOU SHALL NOT PASS!!! )
+  Anonymous P2P Microblogging  v0.1.9
     """)
 
     logger.info("Initialising storage...")
@@ -243,6 +263,7 @@ def main():
 
     url = f"http://127.0.0.1:{FLASK_PORT}"
     start_tray(url)
+    _hide_console_window()
     open_window(FLASK_PORT)
 
 
