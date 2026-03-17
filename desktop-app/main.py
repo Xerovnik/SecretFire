@@ -78,7 +78,10 @@ def _prompt_password(
     dlg = tk.Toplevel(root)
     dlg.title(title)
     dlg.resizable(False, False)
-    dlg.grab_set()
+    try:
+        dlg.grab_set()
+    except Exception:
+        pass
     dlg.attributes("-topmost", True)
 
     frame = tk.Frame(dlg, padx=24, pady=16)

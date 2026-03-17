@@ -81,7 +81,10 @@ def _prompt_import_password(title: str, message: str, confirm: bool = True) -> s
         dlg = tk.Toplevel(root)
         dlg.title(title)
         dlg.resizable(False, False)
-        dlg.grab_set()
+        try:
+            dlg.grab_set()
+        except Exception:
+            pass
         dlg.attributes("-topmost", True)
         frame = tk.Frame(dlg, padx=24, pady=16)
         frame.pack(fill="both", expand=True)
