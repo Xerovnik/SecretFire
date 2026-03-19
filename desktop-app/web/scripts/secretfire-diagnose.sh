@@ -47,20 +47,28 @@ else
 fi
 
 # ── 3. Bootstrap ───────────────────────────────────────────────────────
+# SecretFire logs Tor to stdout only — there is no tor.log on disk.
+# SecretFire only opens the SOCKS port after Tor reaches 100% bootstrap,
+# so SOCKS listening is the reliable proxy for "bootstrapped successfully".
 echo "[ 3/9 ] Tor bootstrap status"
-BOOT_PCT=0
-if [ -f "$TOR_LOG" ]; then
-    BOOT_PCT=$(grep -oE "Bootstrapped [0-9]+%" "$TOR_LOG" 2>/dev/null | grep -oE "[0-9]+" | sort -n | tail -1)
-    BOOT_PCT=${BOOT_PCT:-0}
+SOCKS_TEST_PORT=9150
+if [ -f "$TORRC" ]; then
+    FOUND_PORT=$(grep -oE "SocksPort [0-9]+" "$TORRC" 2>/dev/null | grep -oE "[0-9]+" | head -1)
+    [ -n "$FOUND_PORT" ] && SOCKS_TEST_PORT=$FOUND_PORT
 fi
-if [ "$BOOT_PCT" -eq 100 ] 2>/dev/null; then
-    ok "Tor fully bootstrapped (100%)"
+BOOT_SOCKS=0
+if command -v ss &>/dev/null; then
+    BOOT_SOCKS=$(ss -ltn 2>/dev/null | grep -c ":${SOCKS_TEST_PORT} ")
+elif command -v netstat &>/dev/null; then
+    BOOT_SOCKS=$(netstat -ltn 2>/dev/null | grep -c ":${SOCKS_TEST_PORT} ")
+fi
+BOOTSTRAPPED=0
+if [ "$BOOT_SOCKS" -gt 0 ]; then
+    ok "Tor bootstrapped (100%) — SOCKS port is open"
+    BOOTSTRAPPED=1
     ((PASS++))
-elif [ "$BOOT_PCT" -gt 0 ] 2>/dev/null; then
-    fail "Tor bootstrap in progress (${BOOT_PCT}%)" "Wait 30–90 s and run again. If stuck, enable bridges."
-    ((FAIL++))
 else
-    fail "No bootstrap progress (0%)" "Tor may be blocked by your ISP or firewall. Consider enabling bridges."
+    fail "Tor not yet bootstrapped" "SOCKS port is not open. Wait 60–90 s after starting SecretFire. If stuck, try a different network or enable bridges."
     ((FAIL++))
 fi
 
@@ -116,7 +124,7 @@ fi
 
 # ── 7. Self-onion reachability ─────────────────────────────────────────
 echo "[ 7/9 ] Self-onion reachability (via SOCKS — may take up to 20 s)"
-if [ -n "$ONION" ] && [ "$SOCKS_OK" -gt 0 ] && [ "$BOOT_PCT" -eq 100 ] && command -v curl &>/dev/null; then
+if [ -n "$ONION" ] && [ "$SOCKS_OK" -gt 0 ] && [ "$BOOTSTRAPPED" -eq 1 ] && command -v curl &>/dev/null; then
     # Read the Flask port from config if possible, default 7474
     FLASK_PORT=7474
     SF_RESPONSE=$(curl --socks5-hostname "127.0.0.1:${SOCKS_PORT}" -s \

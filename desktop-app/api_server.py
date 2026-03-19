@@ -189,21 +189,15 @@ def create_app(
             ts.get("running", False),
             "Check the Console tab for startup errors." if not ts.get("running") else "")
 
-        # 2. Bootstrap: scan tor.log for highest % seen
-        bootstrap_pct = 0
-        log_path = TOR_DATA_DIR / "tor.log"
-        try:
-            if log_path.exists():
-                text = log_path.read_text(errors="replace")
-                for m in re.finditer(r"Bootstrapped (\d+)%", text):
-                    bootstrap_pct = max(bootstrap_pct, int(m.group(1)))
-        except Exception:
-            pass
-        chk("bootstrap", f"Tor bootstrapped ({bootstrap_pct}%)",
-            bootstrap_pct == 100,
-            "" if bootstrap_pct == 100 else
-            "Tor is still connecting. Wait 30–90 s and run again. If stuck, try enabling bridges." if bootstrap_pct > 0
-            else "No bootstrap progress seen. Tor may be blocked — consider enabling bridges.")
+        # 2. Bootstrap: tor_manager.is_running is set True only after 100% bootstrap.
+        #    Tor logs to stdout only (no tor.log on disk), so is_running is the
+        #    only reliable in-process indicator of completed bootstrap.
+        bootstrapped = ts.get("running", False)
+        chk("bootstrap", "Tor bootstrapped (100%)" if bootstrapped else "Tor not yet bootstrapped",
+            bootstrapped,
+            "" if bootstrapped else
+            "Tor is still connecting. Wait 30–90 s and run diagnostics again. "
+            "If stuck after 2 minutes, try a different network or enable bridges.")
 
         # 3. Hidden service hostname
         hostname_file = TOR_HIDDEN_SERVICE_DIR / "hostname"
@@ -232,7 +226,7 @@ def create_app(
         # 5. Self-reachability via onion (only attempt if prerequisites pass)
         self_ok = False
         self_note = ""
-        if socks_ok and onion and bootstrap_pct == 100:
+        if socks_ok and onion and bootstrapped:
             try:
                 import requests as _req
                 from config import FLASK_PORT

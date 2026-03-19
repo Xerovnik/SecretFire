@@ -53,27 +53,32 @@ if ($TorProc) {
 }
 
 # ── 3. Bootstrap ───────────────────────────────────────────────────────
+# SecretFire logs Tor to stdout only — there is no tor.log on disk.
+# SecretFire only opens the SOCKS port after Tor reaches 100% bootstrap,
+# so SOCKS listening is the reliable proxy for "bootstrapped successfully".
 Write-Host "[ 3/9 ] Tor bootstrap status"
-$BootPct = 0
-if (Test-Path $TorLog) {
-    $lines = Get-Content $TorLog -ErrorAction SilentlyContinue
-    if ($lines) {
-        $matches = $lines | Select-String -Pattern "Bootstrapped (\d+)%" -AllMatches
-        foreach ($m in $matches) {
-            $pct = [int]$m.Matches[0].Groups[1].Value
-            if ($pct -gt $BootPct) { $BootPct = $pct }
-        }
+$SocksPort = 9150
+if (Test-Path $Torrc) {
+    $portLine = Select-String -Path $Torrc -Pattern "SocksPort (\d+)" | Select-Object -First 1
+    if ($portLine) {
+        $portMatch = [regex]::Match($portLine.Line, "SocksPort (\d+)")
+        if ($portMatch.Success) { $SocksPort = [int]$portMatch.Groups[1].Value }
     }
 }
-if ($BootPct -eq 100) {
-    Write-Ok "Tor fully bootstrapped (100%)"
-    $Pass++
-} elseif ($BootPct -gt 0) {
-    Write-Fail "Tor bootstrap in progress ($BootPct%)" "Wait 30-90 s and run again. If stuck, enable bridges."
+$Bootstrapped = $false
+$bootConn = New-Object System.Net.Sockets.TcpClient
+try {
+    $bootConn.Connect("127.0.0.1", $SocksPort)
+    if ($bootConn.Connected) {
+        $Bootstrapped = $true
+        Write-Ok "Tor bootstrapped (100%) — SOCKS port $SocksPort is open"
+        $Pass++
+    }
+} catch {
+    Write-Fail "Tor not yet bootstrapped" "SOCKS port $SocksPort is not open. Wait 60-90 s after starting SecretFire. If still stuck, try a different network or enable bridges."
     $Fail++
-} else {
-    Write-Fail "No bootstrap progress (0%)" "Tor may be blocked by your ISP or firewall. Consider enabling bridges."
-    $Fail++
+} finally {
+    $bootConn.Close()
 }
 
 # ── 4. Hidden service ──────────────────────────────────────────────────
@@ -134,7 +139,7 @@ if ($SocksConn) {
 
 # ── 7. Self-onion reachability ─────────────────────────────────────────
 Write-Host "[ 7/9 ] Self-onion reachability (via SOCKS — may take up to 25 s)"
-if ($Onion -and $SocksConn -and $BootPct -eq 100) {
+if ($Onion -and $SocksConn -and $Bootstrapped) {
     try {
         $r = Invoke-WebRequest `
             -Uri "http://${Onion}:${FlaskPort}/api/status" `
