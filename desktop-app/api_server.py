@@ -23,6 +23,8 @@ import json
 import re
 import uuid
 import time
+import socket
+import datetime
 import logging
 import os
 from pathlib import Path
@@ -167,6 +169,144 @@ def create_app(
             "node_id":    node_identity.get("node_id", "unknown"),
             "public_key": node_identity.get("ed25519_public", ""),
             "stats":      stats,
+        })
+
+    # ------------------------------------------------------------------ #
+    # Diagnostics
+    # ------------------------------------------------------------------ #
+
+    @app.route("/api/diagnostics")
+    def diagnostics():
+        from config import TOR_DATA_DIR, TOR_HIDDEN_SERVICE_DIR, DB_PATH
+        checks = []
+
+        def chk(key, label, ok, note=""):
+            checks.append({"key": key, "label": label, "ok": ok, "note": note})
+
+        # 1. Tor process running
+        ts = tor_manager.status()
+        chk("tor_running", "Tor process running",
+            ts.get("running", False),
+            "Check the Console tab for startup errors." if not ts.get("running") else "")
+
+        # 2. Bootstrap: scan tor.log for highest % seen
+        bootstrap_pct = 0
+        log_path = TOR_DATA_DIR / "tor.log"
+        try:
+            if log_path.exists():
+                text = log_path.read_text(errors="replace")
+                for m in re.finditer(r"Bootstrapped (\d+)%", text):
+                    bootstrap_pct = max(bootstrap_pct, int(m.group(1)))
+        except Exception:
+            pass
+        chk("bootstrap", f"Tor bootstrapped ({bootstrap_pct}%)",
+            bootstrap_pct == 100,
+            "" if bootstrap_pct == 100 else
+            "Tor is still connecting. Wait 30–90 s and run again. If stuck, try enabling bridges." if bootstrap_pct > 0
+            else "No bootstrap progress seen. Tor may be blocked — consider enabling bridges.")
+
+        # 3. Hidden service hostname
+        hostname_file = TOR_HIDDEN_SERVICE_DIR / "hostname"
+        onion = ""
+        try:
+            if hostname_file.exists():
+                onion = hostname_file.read_text().strip()
+        except Exception:
+            pass
+        chk("hidden_service", "Hidden service address generated",
+            bool(onion),
+            onion if onion else "Hostname file missing. Tor may not have finished publishing.")
+
+        # 4. SOCKS port listening
+        socks_port = ts.get("socks_port") or 9150
+        socks_ok = False
+        try:
+            with socket.create_connection(("127.0.0.1", socks_port), timeout=2):
+                socks_ok = True
+        except OSError:
+            pass
+        chk("socks_port", f"SOCKS proxy listening (:{socks_port})",
+            socks_ok,
+            "" if socks_ok else "SOCKS port not open. Tor may have failed to start.")
+
+        # 5. Self-reachability via onion (only attempt if prerequisites pass)
+        self_ok = False
+        self_note = ""
+        if socks_ok and onion and bootstrap_pct == 100:
+            try:
+                import requests as _req
+                from config import FLASK_PORT
+                proxies = {
+                    "http":  f"socks5h://127.0.0.1:{socks_port}",
+                    "https": f"socks5h://127.0.0.1:{socks_port}",
+                }
+                r = _req.get(
+                    f"http://{onion}:{FLASK_PORT}/api/status",
+                    proxies=proxies, timeout=20
+                )
+                self_ok = r.status_code == 200
+                self_note = "Your node is reachable from within the Tor network." if self_ok else f"Got HTTP {r.status_code}"
+            except Exception as e:
+                self_note = ("Descriptor not yet propagated — wait 60–120 s after first start and try again."
+                             if "timed out" in str(e).lower() or "connect" in str(e).lower()
+                             else str(e))
+        else:
+            self_note = "Skipped — requires Tor running, SOCKS open, and 100% bootstrap."
+        chk("self_reach", "Self-onion reachability", self_ok, self_note)
+
+        # 6. Clearnet blocked (intentional — OnionTrafficOnly)
+        clearnet_blocked = False
+        if socks_ok:
+            try:
+                with socket.create_connection(("127.0.0.1", socks_port), timeout=2) as s:
+                    s.sendall(b"\x05\x01\x00")
+                    s.recv(2)
+                    # try CONNECT to a clearnet IP — should be refused
+                    s.sendall(b"\x05\x01\x00\x01\x01\x01\x01\x01\x00\x50")
+                    resp = s.recv(10)
+                    clearnet_blocked = len(resp) >= 2 and resp[1] != 0x00
+            except Exception:
+                clearnet_blocked = True
+        chk("clearnet_blocked", "Clearnet traffic blocked (OnionTrafficOnly)",
+            clearnet_blocked,
+            "Expected — this is a security feature. The SOCKS proxy only allows .onion traffic." if clearnet_blocked
+            else "Clearnet appears reachable through SOCKS. OnionTrafficOnly may not be active.")
+
+        # 7. System clock (report UTC so user can compare)
+        utc_now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+        chk("clock", f"System clock ({utc_now})",
+            True,
+            "Tor requires accurate time (within ~30 s). If peers can't connect, verify your clock is correct.")
+
+        # 8. Database reachable
+        db_ok = False
+        db_note = ""
+        try:
+            stats = storage.get_stats()
+            posts = stats.get("posts", 0)
+            peers = stats.get("peers", 0)
+            db_ok = True
+            db_note = f"{posts} post(s), {peers} peer(s) in local database."
+        except Exception as e:
+            db_note = str(e)
+        chk("database", "Local database accessible", db_ok, db_note)
+
+        # 9. Peer count detail
+        try:
+            peer_rows = storage.get_peers()
+            verified = sum(1 for p in peer_rows if p.get("auth_verified"))
+            unverified = len(peer_rows) - verified
+            chk("peers", f"Known peers ({len(peer_rows)} total)",
+                len(peer_rows) > 0,
+                f"{verified} verified, {unverified} unverified. Add peers via the Peers tab." if len(peer_rows) == 0
+                else f"{verified} verified, {unverified} unverified.")
+        except Exception:
+            chk("peers", "Known peers", False, "Could not query peer table.")
+
+        return jsonify({
+            "checks": checks,
+            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            "version": APP_VERSION,
         })
 
     # ------------------------------------------------------------------ #
