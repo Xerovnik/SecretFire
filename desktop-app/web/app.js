@@ -85,8 +85,32 @@ function showTab(name, btn) {
   if (btn) btn.classList.add("active");
   appState.activeTab = name;
 
-  if (name === "peers")   renderPeersTab();
-  if (name === "console") scrollConsole();
+  if (name === "peers")    renderPeersTab();
+  if (name === "console")  scrollConsole();
+  if (name === "settings") renderDiagScriptButtons();
+}
+
+function renderDiagScriptButtons() {
+  const wrap = document.getElementById("diag-script-btns");
+  if (!wrap) return;
+  const ua  = navigator.userAgent || "";
+  const isWin  = ua.includes("Windows");
+  const isMac  = ua.includes("Macintosh") || ua.includes("Mac OS");
+  const isLinux = ua.includes("Linux") && !ua.includes("Android");
+  let primary = null, secondary = null;
+  if (isWin) {
+    primary   = { href: "scripts/SecretFire-Diagnose.ps1", label: "Download Windows Script (.ps1)", dl: "SecretFire-Diagnose.ps1" };
+    secondary = { href: "scripts/secretfire-diagnose.sh",  label: "Linux / macOS Script",           dl: "secretfire-diagnose.sh" };
+  } else if (isMac) {
+    primary   = { href: "scripts/secretfire-diagnose.sh",  label: "Download macOS Script (.sh)",    dl: "secretfire-diagnose.sh" };
+    secondary = { href: "scripts/SecretFire-Diagnose.ps1", label: "Windows Script (.ps1)",          dl: "SecretFire-Diagnose.ps1" };
+  } else {
+    primary   = { href: "scripts/secretfire-diagnose.sh",  label: "Download Linux Script (.sh)",    dl: "secretfire-diagnose.sh" };
+    secondary = { href: "scripts/SecretFire-Diagnose.ps1", label: "Windows Script (.ps1)",          dl: "SecretFire-Diagnose.ps1" };
+  }
+  wrap.innerHTML = `
+    <a class="btn btn-secondary" href="${primary.href}" download="${primary.dl}">${primary.label}</a>
+    <a class="btn btn-ghost btn-sm" href="${secondary.href}" download="${secondary.dl}" style="font-size:11px;color:var(--text2)">${secondary.label}</a>`;
 }
 
 /* ── Status ──────────────────────────────────────────────────────────── */

@@ -70,7 +70,10 @@ def check_for_update() -> dict | None:
     """
     try:
         resp = requests.get(GITHUB_RELEASES_API, timeout=12,
-                            headers={"Accept": "application/vnd.github+json"})
+                            headers={
+                                "Accept": "application/vnd.github+json",
+                                "Accept-Encoding": "identity",
+                            })
         resp.raise_for_status()
         data = resp.json()
 
