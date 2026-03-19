@@ -566,7 +566,15 @@ def create_app(
 
     @app.route("/api/update/check", methods=["GET"])
     def update_check():
-        import updater as _updater
+        try:
+            import updater as _updater
+        except Exception as e:
+            logger.warning(f"updater module unavailable: {e}")
+            return jsonify({
+                "update_available": False,
+                "error": "updater unavailable — download the latest binary manually from GitHub",
+                "current": APP_VERSION,
+            })
         force = request.args.get("force") == "1"
         if not _update_cache["checked"] or force:
             result = _updater.check_for_update()
@@ -577,13 +585,17 @@ def create_app(
             return jsonify({
                 "update_available": False,
                 "error":   "check failed",
-                "current": node_identity.get("version", "unknown"),
+                "current": APP_VERSION,
             })
         return jsonify(r)
 
     @app.route("/api/update/download", methods=["POST"])
     def update_download():
-        import updater as _updater
+        try:
+            import updater as _updater
+        except Exception as e:
+            logger.warning(f"updater module unavailable: {e}")
+            return jsonify({"error": "updater unavailable"}), 503
         import threading as _threading
         if _download_state["status"] == "downloading":
             return jsonify({"error": "Already downloading"}), 409
