@@ -230,13 +230,14 @@ def create_app(
         if socks_ok and onion and bootstrapped:
             try:
                 import requests as _req
-                from config import FLASK_PORT
                 proxies = {
                     "http":  f"socks5h://127.0.0.1:{socks_port}",
                     "https": f"socks5h://127.0.0.1:{socks_port}",
                 }
+                # The hidden service exposes port 80 and forwards internally to Flask.
+                # Do NOT use FLASK_PORT (7474) here — that is only the local bind port.
                 r = _req.get(
-                    f"http://{onion}:{FLASK_PORT}/api/status",
+                    f"http://{onion}/api/status",
                     proxies=proxies, timeout=30
                 )
                 self_ok   = r.status_code == 200
