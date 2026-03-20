@@ -180,8 +180,8 @@ def create_app(
         from config import TOR_DATA_DIR, TOR_HIDDEN_SERVICE_DIR, DB_PATH
         checks = []
 
-        def chk(key, label, ok, note=""):
-            checks.append({"key": key, "label": label, "ok": ok, "note": note})
+        def chk(key, label, ok, note="", warn=False):
+            checks.append({"key": key, "label": label, "ok": ok, "warn": warn, "note": note})
 
         # 1. Tor process running
         ts = tor_manager.status()
@@ -224,7 +224,8 @@ def create_app(
             "" if socks_ok else "SOCKS port not open. Tor may have failed to start.")
 
         # 5. Self-reachability via onion (only attempt if prerequisites pass)
-        self_ok = False
+        self_ok   = False
+        self_warn = False
         self_note = ""
         if socks_ok and onion and bootstrapped:
             try:
@@ -236,17 +237,27 @@ def create_app(
                 }
                 r = _req.get(
                     f"http://{onion}:{FLASK_PORT}/api/status",
-                    proxies=proxies, timeout=20
+                    proxies=proxies, timeout=30
                 )
-                self_ok = r.status_code == 200
-                self_note = "Your node is reachable from within the Tor network." if self_ok else f"Got HTTP {r.status_code}"
+                self_ok   = r.status_code == 200
+                self_note = ("Your node is reachable from within the Tor network."
+                             if self_ok else f"Got HTTP {r.status_code} — hidden service is up but returned an error.")
             except Exception as e:
-                self_note = ("Descriptor not yet propagated — wait 60–120 s after first start and try again."
-                             if "timed out" in str(e).lower() or "connect" in str(e).lower()
-                             else str(e))
+                err = str(e).lower()
+                if "timed out" in err or "time out" in err or "timeout" in err:
+                    # Timeout = descriptor still propagating; not a hard failure
+                    self_warn = True
+                    self_note = ("Circuit timed out — the hidden service descriptor is still propagating. "
+                                 "This is normal for the first 2–5 minutes after startup. "
+                                 "Wait a little longer and run diagnostics again.")
+                elif "refused" in err or "connect" in err:
+                    self_note = ("Connection refused — the hidden service port may not be reachable. "
+                                 "Check the Console tab for errors.")
+                else:
+                    self_note = str(e)
         else:
             self_note = "Skipped — requires Tor running, SOCKS open, and 100% bootstrap."
-        chk("self_reach", "Self-onion reachability", self_ok, self_note)
+        chk("self_reach", "Self-onion reachability", self_ok, self_note, warn=self_warn)
 
         # 6. Clearnet blocked (intentional — OnionTrafficOnly)
         clearnet_blocked = False

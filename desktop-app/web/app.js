@@ -547,13 +547,13 @@ async function runDiagnostics() {
   btn.disabled = true;
   btn.textContent = "Running…";
   box.style.display = "block";
-  box.innerHTML = `<div class="diag-running">Running checks — the self-onion test can take up to 20 s…</div>`;
+  box.innerHTML = `<div class="diag-running">Running checks — the self-onion test can take up to 30 s…</div>`;
   try {
     const data = await apiFetch("/api/diagnostics");
     const rows = data.checks.map(c => {
-      const icon  = c.ok  ? "✓" : (c.key === "clearnet_blocked" ? "✓" : "✗");
-      const cls   = c.ok  ? "diag-ok" : (c.key === "clearnet_blocked" ? "diag-ok" : "diag-fail");
-      const note  = c.note ? `<div class="diag-note">${esc(c.note)}</div>` : "";
+      const icon = c.ok  ? "✓" : (c.warn ? "⚠" : "✗");
+      const cls  = c.ok  ? "diag-ok" : (c.warn ? "diag-warn" : "diag-fail");
+      const note = c.note ? `<div class="diag-note">${esc(c.note)}</div>` : "";
       return `<div class="diag-row ${cls}">
         <span class="diag-icon">${icon}</span>
         <div class="diag-body">
@@ -562,10 +562,13 @@ async function runDiagnostics() {
         </div>
       </div>`;
     }).join("");
-    const allOk = data.checks.every(c => c.ok);
-    const summary = allOk
+    const hasHardFail = data.checks.some(c => !c.ok && !c.warn);
+    const hasWarn     = data.checks.some(c => c.warn);
+    const summary = !hasHardFail && !hasWarn
       ? `<div class="diag-summary diag-summary-ok">All checks passed — your node looks healthy.</div>`
-      : `<div class="diag-summary diag-summary-warn">Some checks failed. See the notes above for how to fix them. Download the standalone script to share results with someone who can help.</div>`;
+      : hasHardFail
+        ? `<div class="diag-summary diag-summary-fail">Some checks failed. See the notes above for how to fix them. Download the standalone script to share results with someone who can help.</div>`
+        : `<div class="diag-summary diag-summary-notice">Node looks functional — some checks have warnings. See the details above.</div>`;
     box.innerHTML = rows + summary +
       `<div class="diag-ts">Checked at ${data.timestamp.replace("T"," ").replace("Z"," UTC")}</div>`;
   } catch (e) {
