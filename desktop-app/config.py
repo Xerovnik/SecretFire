@@ -18,7 +18,7 @@ import os
 from pathlib import Path
 
 APP_NAME = "SecretFire"
-APP_VERSION = "0.1.33"
+APP_VERSION = "0.1.34"
 
 DATA_DIR = Path.home() / ".secretfire"
 DB_PATH = DATA_DIR / "node.db"
@@ -38,7 +38,7 @@ TOR_HIDDEN_SERVICE_PORT = 7475
 CHUNK_SIZE = 480
 HEADER_SIZE = 44
 
-GOSSIP_INTERVAL = 30
+GOSSIP_INTERVAL = 15
 MAX_PEERS = 50
 POST_MAX_LENGTH = 500
 

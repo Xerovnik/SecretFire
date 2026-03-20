@@ -36,6 +36,7 @@ import logging
 import threading
 import base64
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 import storage
@@ -63,6 +64,9 @@ _MAX_FRAGMENT_BYTES = 8192
 _KEY_ROTATION_INTERVAL = 24 * 3600   # rotate broadcast key every 24 hours
 _MAX_OLD_KEYS          = 3           # keep this many past keys for late fragments
 _PEER_SIG_MAX_AGE      = 300         # seconds — reject peer list sigs older than this
+
+_SYNC_WORKERS          = 6           # max peers to sync in parallel
+_INACTIVE_RETRY_CYCLES = 3           # retry inactive peers every N cycles
 
 
 def _peer_url(onion_address: str) -> str:
@@ -177,7 +181,7 @@ class GossipManager:
         cycle = 0
         while not self._stop_event.is_set():
             try:
-                include_inactive = (cycle % 5 == 0)
+                include_inactive = (cycle % _INACTIVE_RETRY_CYCLES == 0)
                 self._sync_all_peers(include_inactive=include_inactive)
                 self._process_complete_fragments()
                 cycle += 1
@@ -246,21 +250,35 @@ class GossipManager:
     # Outbound sync
     # ------------------------------------------------------------------
 
+    _SKIP_ADDRS = frozenset({
+        "demo-mode-no-tor.local",
+        "demo-mode-tor-failed.local",
+        "unknown.onion",
+    })
+
     def _sync_all_peers(self, include_inactive=False):
         peers = storage.get_peers(active_only=not include_inactive)
-        for peer in peers:
-            addr = peer["onion_address"]
-            if addr in (
-                "demo-mode-no-tor.local",
-                "demo-mode-tor-failed.local",
-                "unknown.onion",
-            ):
-                continue
-            try:
-                self._sync_peer(addr)
-            except Exception as e:
-                logger.debug(f"Failed to sync {addr}: {e}")
-                storage.update_peer_status(addr, False)
+        addrs = [
+            p["onion_address"] for p in peers
+            if p["onion_address"] not in self._SKIP_ADDRS
+        ]
+        if not addrs:
+            return
+
+        # Sync all peers concurrently so one slow/offline peer does not
+        # delay syncing with the rest.
+        with ThreadPoolExecutor(max_workers=_SYNC_WORKERS) as pool:
+            futures = {pool.submit(self._sync_peer_safe, addr): addr for addr in addrs}
+            for future in as_completed(futures):
+                pass  # results and errors handled inside _sync_peer_safe
+
+    def _sync_peer_safe(self, addr: str):
+        """Thin wrapper around _sync_peer that catches all exceptions."""
+        try:
+            self._sync_peer(addr)
+        except Exception as e:
+            logger.debug(f"Failed to sync {addr}: {e}")
+            storage.update_peer_status(addr, False)
 
     def _sync_peer(self, onion_address: str):
         session = self._get_session()
