@@ -209,9 +209,11 @@ def _start_powershell_launcher(new_exe: Path, current_exe: Path,
         f"Move-Item -LiteralPath '{current_exe}' -Destination '{backup_exe}' -ErrorAction SilentlyContinue\n"
         # Copy new binary into the now-vacant original path
         f"Copy-Item -Force -Path '{new_exe}' -Destination '{current_exe}'\n"
-        # Brief pause — ensures Windows has fully flushed the copied exe to disk
-        # before we try to execute it (avoids "Python DLL" load errors on first launch)
-        "Start-Sleep -Seconds 2\n"
+        # Pause long enough for Windows to finish flushing, indexing, and AV-scanning
+        # the newly copied exe before we try to execute it.  2 s was too short and
+        # caused "Failed to load Python DLL" on the auto-restart immediately after
+        # an update; the manual re-launch (seconds later) always succeeded.
+        "Start-Sleep -Seconds 6\n"
         # Launch updated app from its own directory so relative paths resolve correctly
         f"Start-Process -FilePath '{current_exe}' -WorkingDirectory '{current_exe.parent}'\n"
         # Give the new app a moment to start, then clean up
