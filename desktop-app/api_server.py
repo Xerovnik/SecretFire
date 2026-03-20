@@ -516,7 +516,7 @@ def create_app(
     def get_nicknames():
         return jsonify({"nicknames": storage.get_nicknames()})
 
-    @app.route("/api/nicknames/<pubkey>", methods=["PUT"])
+    @app.route("/api/nicknames/<path:pubkey>", methods=["PUT"])
     def set_nickname(pubkey):
         data = request.get_json()
         if not data or "nickname" not in data:
@@ -530,7 +530,7 @@ def create_app(
         storage.set_nickname(pubkey, nick)
         return jsonify({"success": True, "nickname": nick})
 
-    @app.route("/api/nicknames/<pubkey>", methods=["DELETE"])
+    @app.route("/api/nicknames/<path:pubkey>", methods=["DELETE"])
     def delete_nickname(pubkey):
         storage.delete_nickname(pubkey)
         return jsonify({"success": True})
