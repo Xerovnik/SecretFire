@@ -1,6 +1,25 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller spec — builds SecretFire into a single-file executable
-# Run: pyinstaller secretfire.spec
+# PyInstaller spec — builds SecretFire as a one-directory bundle.
+#
+# ONE-DIR (not one-file) is intentional and important.
+#
+# The --onefile approach extracts python3xx.dll and all DLLs into a _MEI*
+# temp folder on every launch.  Windows Defender, corporate AV, and partially-
+# failed prior extractions routinely leave that DLL in a broken state, causing:
+#
+#   "Failed to load Python DLL … python311.dll.
+#    LoadLibrary: The specified module could not be found."
+#
+# With --onedir every DLL sits permanently next to SecretFire.exe.  Windows
+# locates them instantly via the standard DLL search order — no temp extraction,
+# no AV interception, no stale _MEI dirs accumulating in Downloads.
+#
+# Distribution: zip dist/SecretFire/ → users unzip once and run SecretFire.exe.
+#
+# Build:
+#   pip install pyinstaller
+#   python download_tor_bundle.py   # optional — bundles Tor so users don't need it
+#   pyinstaller secretfire.spec
 
 import os
 from pathlib import Path
@@ -60,21 +79,29 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    [],
+    [],                          # binaries go to COLLECT, not embedded in exe
+    exclude_binaries=True,       # required for --onedir: DLLs live beside the exe
     name="SecretFire",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
     upx_exclude=[],
-    runtime_tmpdir=".",
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name="SecretFire",
 )
