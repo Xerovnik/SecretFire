@@ -217,10 +217,7 @@ def _start_powershell_launcher(new_exe: Path, current_exe: Path,
         # Give the new app a moment to start, then clean up
         "Start-Sleep -Seconds 3\n"
         f"Remove-Item -Force -LiteralPath '{backup_exe}' -ErrorAction SilentlyContinue\n"
-        # Remove the entire staging directory (.sf_update/) — script removes itself
-        # first (PowerShell has already loaded it into memory), then the parent dir
-        "Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue\n"
-        f"Remove-Item -Recurse -Force -LiteralPath '{stage_dir}' -ErrorAction SilentlyContinue\n",
+        "Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue\n",
         encoding="utf-8",
     )
     subprocess.Popen(
@@ -250,9 +247,7 @@ def _start_shell_launcher(new_exe: Path, current_exe: Path,
         "sleep 4\n"
         f"cp -f '{new_exe}' '{current_exe}'\n"
         f"'{current_exe}' &\n"
-        # Remove the script itself, then the entire staging directory
-        "rm -- \"$0\"\n"
-        f"rm -rf '{stage_dir}'\n",
+        "rm -- \"$0\"\n",
         encoding="utf-8",
     )
     os.chmod(script, 0o755)
