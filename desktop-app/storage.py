@@ -81,13 +81,22 @@ def init_db():
         )
     """)
 
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS deleted_posts (
+            post_id          TEXT PRIMARY KEY,
+            author_pubkey    TEXT NOT NULL,
+            delete_signature TEXT NOT NULL,
+            delete_timestamp INTEGER NOT NULL
+        )
+    """)
+
     conn.commit()
     conn.close()
     _migrate()
 
 
 def _migrate():
-    """Safe migrations for existing databases — adds columns if missing."""
+    """Safe migrations for existing databases — adds columns/tables if missing."""
     conn = sqlite3.connect(str(DB_PATH))
     c = conn.cursor()
 
@@ -100,6 +109,16 @@ def _migrate():
         c.execute("ALTER TABLE peers ADD COLUMN auth_pubkey TEXT")
     if "auth_verified" not in existing_peers:
         c.execute("ALTER TABLE peers ADD COLUMN auth_verified INTEGER DEFAULT 0")
+
+    # Tombstone table for network-propagated deletes (may not exist on old DBs)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS deleted_posts (
+            post_id          TEXT PRIMARY KEY,
+            author_pubkey    TEXT NOT NULL,
+            delete_signature TEXT NOT NULL,
+            delete_timestamp INTEGER NOT NULL
+        )
+    """)
 
     conn.commit()
     conn.close()
@@ -120,6 +139,9 @@ def save_post(post_id, content, author_pubkey=None, signature=None,
               timestamp=None, source_peer=None, parent_id=None):
     conn = _conn()
     ts = timestamp if timestamp else _now()
+    # Refuse to store any post whose tombstone already exists
+    if is_deleted(post_id):
+        return False
     try:
         conn.execute(
             "INSERT OR IGNORE INTO posts "
@@ -173,18 +195,92 @@ def post_exists(post_id):
     return row is not None
 
 
+def get_post_author_pubkey(post_id: str) -> str | None:
+    """Return the author_pubkey for a post, or None if the post isn't stored."""
+    row = _conn().execute(
+        "SELECT author_pubkey FROM posts WHERE id=?", (post_id,)
+    ).fetchone()
+    if row is None:
+        return None
+    return row[0]
+
+
 def delete_post(post_id: str) -> bool:
     """Delete a post and all its replies from local storage.
 
     Returns True if at least one row was deleted, False if the post was
-    not found.  This only affects the local node — posts already propagated
-    to peers are unaffected.
+    not found.
     """
     conn = _conn()
     conn.execute("DELETE FROM posts WHERE parent_id=?", (post_id,))
     cur = conn.execute("DELETE FROM posts WHERE id=?", (post_id,))
     conn.commit()
     return cur.rowcount > 0
+
+
+# ---------------------------------------------------------------------------
+# Delete tombstones — network-propagated permanent deletes
+# ---------------------------------------------------------------------------
+
+def is_deleted(post_id: str) -> bool:
+    """Return True if this post_id has a verified delete tombstone."""
+    row = _conn().execute(
+        "SELECT 1 FROM deleted_posts WHERE post_id=?", (post_id,)
+    ).fetchone()
+    return row is not None
+
+
+def save_delete_tombstone(
+    post_id: str,
+    author_pubkey: str,
+    delete_signature: str,
+    delete_timestamp: int,
+) -> bool:
+    """Persist a delete tombstone and remove the post (+ its replies) if present.
+
+    Safe to call multiple times — INSERT OR IGNORE means duplicate tombstones
+    are silently discarded.  Returns True if the tombstone was newly inserted.
+    """
+    conn = _conn()
+    cur = conn.execute(
+        "INSERT OR IGNORE INTO deleted_posts "
+        "(post_id, author_pubkey, delete_signature, delete_timestamp) "
+        "VALUES (?,?,?,?)",
+        (post_id, author_pubkey, delete_signature, delete_timestamp),
+    )
+    conn.commit()
+    if cur.rowcount > 0:
+        # Also purge the live post and any replies
+        conn.execute("DELETE FROM posts WHERE parent_id=?", (post_id,))
+        conn.execute("DELETE FROM posts WHERE id=?", (post_id,))
+        conn.commit()
+        return True
+    return False
+
+
+def get_all_delete_tombstone_ids() -> list[str]:
+    """Return all known deleted post IDs (for sync de-duplication)."""
+    rows = _conn().execute("SELECT post_id FROM deleted_posts").fetchall()
+    return [r[0] for r in rows]
+
+
+def get_delete_tombstones(exclude_ids: set | None = None) -> list[dict]:
+    """Return tombstone records, optionally excluding already-known IDs."""
+    rows = _conn().execute(
+        "SELECT post_id, author_pubkey, delete_signature, delete_timestamp "
+        "FROM deleted_posts"
+    ).fetchall()
+    result = []
+    for r in rows:
+        if exclude_ids and r[0] in exclude_ids:
+            continue
+        result.append({
+            "post_id":          r[0],
+            "author_pubkey":    r[1],
+            "delete_signature": r[2],
+            "delete_timestamp": r[3],
+        })
+    return result
 
 
 def save_peer(onion_address):

@@ -266,7 +266,8 @@ class GossipManager:
         session = self._get_session()
         url = _peer_url(onion_address) + "/api/sync"
 
-        my_post_ids = set(storage.get_post_ids())
+        my_post_ids   = set(storage.get_post_ids())
+        my_delete_ids = set(storage.get_all_delete_tombstone_ids())
         with self._key_lock:
             current_key    = self.broadcast_key
             current_key_id = self.key_id
@@ -275,11 +276,12 @@ class GossipManager:
         our_pubkey = self.identity.get("ed25519_public", "")
 
         payload = {
-            "from":           our_onion,
-            "known_post_ids": list(my_post_ids),
-            "broadcast_key":  base64.b64encode(current_key).decode(),
-            "key_id":         current_key_id,
-            "node_pubkey":    our_pubkey,
+            "from":              our_onion,
+            "known_post_ids":    list(my_post_ids),
+            "known_delete_ids":  list(my_delete_ids),
+            "broadcast_key":     base64.b64encode(current_key).decode(),
+            "key_id":            current_key_id,
+            "node_pubkey":       our_pubkey,
         }
 
         # If this peer previously challenged us, include the signed response
@@ -324,9 +326,14 @@ class GossipManager:
                         f"Discarding invalid onion address from peer: {peer_addr!r}"
                     )
 
+        # Apply delete tombstones BEFORE accepting posts so we don't store
+        # posts that should already be gone
+        for tombstone in data.get("delete_tombstones", []):
+            self._apply_delete_tombstone(tombstone)
+
         for post in data.get("posts", []):
             pid = post.get("post_id")
-            if pid and not storage.post_exists(pid):
+            if pid and not storage.post_exists(pid) and not storage.is_deleted(pid):
                 storage.save_post(
                     post_id=pid,
                     content=post["content"],
@@ -496,9 +503,10 @@ class GossipManager:
     # ------------------------------------------------------------------
 
     def handle_sync_request(self, data: dict) -> dict:
-        from_peer         = data.get("from", "")
-        known_ids         = set(data.get("known_post_ids", []))
-        node_pubkey       = data.get("node_pubkey", "")
+        from_peer          = data.get("from", "")
+        known_ids          = set(data.get("known_post_ids", []))
+        known_delete_ids   = set(data.get("known_delete_ids", []))
+        node_pubkey        = data.get("node_pubkey", "")
         challenge_response = data.get("challenge_response", "")
 
         if from_peer and from_peer != self.tor.onion_address:
@@ -512,27 +520,33 @@ class GossipManager:
 
         # --- Challenge-response authentication ----------------------------
         if from_peer and node_pubkey:
-            # Reject if this peer was previously verified with a different key
             if not self._auth.check_pubkey_claim(from_peer, node_pubkey):
                 logger.warning(
                     f"Rejecting sync from {from_peer[:20]}… — pubkey mismatch"
                 )
-                # Still issue posts (don't starve the network), but don't verify
             elif challenge_response:
-                # Peer is responding to a challenge we issued previously
                 self._auth.verify_response(from_peer, node_pubkey, challenge_response)
             else:
-                # First contact or no response yet — persist the claimed pubkey
                 self._auth.store_pubkey(from_peer, node_pubkey)
 
-        # Issue a fresh challenge for this peer (always, regardless of state)
         auth_challenge = None
         if from_peer and node_pubkey:
             auth_challenge = self._auth.issue_challenge(from_peer)
         # ------------------------------------------------------------------
 
+        # Apply any delete tombstones the peer is sending us
+        for tombstone in data.get("delete_tombstones", []):
+            self._apply_delete_tombstone(tombstone)
+
+        # Only return posts that the peer doesn't know about AND haven't been deleted
         all_posts = storage.get_posts(limit=100)
-        new_posts = [p for p in all_posts if p["id"] not in known_ids]
+        new_posts = [
+            p for p in all_posts
+            if p["id"] not in known_ids and not storage.is_deleted(p["id"])
+        ]
+
+        # Return tombstones the peer doesn't know about yet
+        new_tombstones = storage.get_delete_tombstones(exclude_ids=known_delete_ids)
 
         peer_list = [p["onion_address"] for p in storage.get_peers(active_only=True)]
         if self.tor.onion_address:
@@ -555,10 +569,87 @@ class GossipManager:
                 }
                 for p in new_posts[:50]
             ],
-            "peers":          peer_list[:20],
-            "peer_signature": signed_peers,
-            "key_id":         current_key_id,
+            "delete_tombstones": new_tombstones[:50],
+            "peers":             peer_list[:20],
+            "peer_signature":    signed_peers,
+            "key_id":            current_key_id,
         }
         if auth_challenge:
             response["auth_challenge"] = auth_challenge
         return response
+
+    # ------------------------------------------------------------------
+    # Delete tombstone verification and propagation
+    # ------------------------------------------------------------------
+
+    def _apply_delete_tombstone(self, tombstone: dict) -> bool:
+        """Verify and apply an inbound delete tombstone.
+
+        Verifies the Ed25519 signature against the claimed author_pubkey.
+        If valid, stores the tombstone and removes the post locally.
+        Returns True if the tombstone was newly applied.
+        """
+        try:
+            post_id     = tombstone.get("post_id", "")
+            author_pub  = tombstone.get("author_pubkey", "")
+            delete_sig  = tombstone.get("delete_signature", "")
+            delete_ts   = tombstone.get("delete_timestamp", 0)
+
+            if not all([post_id, author_pub, delete_sig, delete_ts]):
+                logger.warning("Received incomplete delete tombstone — ignored")
+                return False
+
+            # Already have this tombstone — nothing to do
+            if storage.is_deleted(post_id):
+                return False
+
+            # Reconstruct the canonical message that was signed
+            canonical = f"DELETE:{post_id}:{delete_ts}"
+            if not crypto_utils.verify_post(canonical, delete_sig, author_pub):
+                logger.warning(
+                    f"Delete tombstone signature INVALID for post {post_id[:12]}… — ignored"
+                )
+                return False
+
+            # If the post exists locally, confirm the author_pubkey matches
+            # (prevents a valid key from deleting someone else's post)
+            local_author = storage.get_post_author_pubkey(post_id)
+            if local_author and local_author != author_pub:
+                logger.warning(
+                    f"Delete tombstone author mismatch for post {post_id[:12]}… — ignored"
+                )
+                return False
+
+            newly_saved = storage.save_delete_tombstone(
+                post_id, author_pub, delete_sig, delete_ts
+            )
+            if newly_saved:
+                logger.info(
+                    f"Applied delete tombstone for post {post_id[:12]}… "
+                    f"(author {author_pub[:16]}…)"
+                )
+            return newly_saved
+
+        except Exception as e:
+            logger.error(f"Error applying delete tombstone: {e}")
+            return False
+
+    def broadcast_delete_tombstone(self, tombstone: dict):
+        """Immediately push a delete tombstone to all active peers.
+
+        Called right after the originator issues a delete so that peers
+        remove the post without waiting for the next gossip sync cycle.
+        """
+        peers   = storage.get_peers(active_only=True)
+        session = self._get_session()
+        _SKIP = {"demo-mode-no-tor.local", "demo-mode-tor-failed.local", "unknown.onion"}
+
+        for peer in peers:
+            addr = peer["onion_address"]
+            if addr in _SKIP:
+                continue
+            try:
+                url = _peer_url(addr) + "/api/delete_tombstone"
+                session.post(url, json=tombstone, timeout=10)
+            except Exception:
+                pass

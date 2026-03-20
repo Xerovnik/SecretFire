@@ -395,10 +395,42 @@ def create_app(
 
     @app.route("/api/posts/<post_id>", methods=["DELETE"])
     def delete_post(post_id):
-        deleted = storage.delete_post(post_id)
-        if not deleted:
-            return jsonify({"error": "Post not found"}), 404
-        return jsonify({"success": True})
+        our_pubkey  = node_identity.get("ed25519_public", "")
+        our_privkey = node_identity.get("ed25519_private", "")
+
+        # Verify the requesting node is the author of this post
+        author = storage.get_post_author_pubkey(post_id)
+        if author and author != our_pubkey:
+            return jsonify({"error": "You are not the author of this post"}), 403
+
+        delete_ts  = int(time.time())
+        canonical  = f"DELETE:{post_id}:{delete_ts}"
+        delete_sig = crypto_utils.sign_post(canonical, our_privkey)
+
+        # Save tombstone (also deletes post + replies locally)
+        storage.save_delete_tombstone(post_id, our_pubkey, delete_sig, delete_ts)
+
+        # Propagate to all peers immediately — don't wait for the gossip cycle
+        tombstone = {
+            "post_id":          post_id,
+            "author_pubkey":    our_pubkey,
+            "delete_signature": delete_sig,
+            "delete_timestamp": delete_ts,
+        }
+        try:
+            gossip_manager.broadcast_delete_tombstone(tombstone)
+        except Exception as e:
+            logger.warning(f"Delete tombstone broadcast failed: {e}")
+
+        logger.info(f"Post {post_id[:12]}… deleted and tombstone propagated")
+        return jsonify({"success": True, "propagated": True})
+
+    @app.route("/api/delete_tombstone", methods=["POST"])
+    def receive_delete_tombstone():
+        """Peer-to-peer endpoint — peers push delete tombstones here directly."""
+        data = request.get_json(silent=True) or {}
+        applied = gossip_manager._apply_delete_tombstone(data)
+        return jsonify({"applied": applied})
 
     # ------------------------------------------------------------------ #
     # Peers
