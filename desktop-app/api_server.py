@@ -73,41 +73,82 @@ def _save_file_dialog(default_name: str, content: str) -> str | None:
 
 
 def _prompt_import_password(title: str, message: str, confirm: bool = True) -> str | None:
-    """Show a native password dialog for import re-encryption. Returns password or None."""
+    """Show a branded SecretFire password dialog for import re-encryption. Returns password or None."""
     try:
         import tkinter as tk
-        from tkinter import messagebox
+        from tkinter import messagebox, font as tkfont
+
+        BG      = "#080e1a"
+        BG2     = "#0d1828"
+        CYAN    = "#00e5ff"
+        FG      = "#c8d6e5"
+        FG_DIM  = "#3d5470"
+        SEP     = "#112238"
+
         result = [None]
         root = tk.Tk()
         root.withdraw()
         dlg = tk.Toplevel(root)
-        dlg.title(title)
+        dlg.title("SecretFire")
         dlg.resizable(False, False)
+        dlg.configure(bg=BG)
         try:
             dlg.grab_set()
         except Exception:
             pass
         dlg.attributes("-topmost", True)
-        frame = tk.Frame(dlg, padx=24, pady=16)
-        frame.pack(fill="both", expand=True)
-        tk.Label(frame, text=message, wraplength=340, justify="left").pack(anchor="w", pady=4)
-        tk.Label(frame, text="Password:").pack(anchor="w", pady=(10, 2))
-        pw_entry = tk.Entry(frame, show="*", width=38)
-        pw_entry.pack(fill="x")
+
+        def _font(*names, size=10, weight="normal"):
+            for name in names:
+                try:
+                    f = tkfont.Font(family=name, size=size, weight=weight)
+                    if f.actual("family").lower().replace(" ", "") == name.lower().replace(" ", ""):
+                        return f
+                except Exception:
+                    pass
+            return tkfont.Font(size=size, weight=weight)
+
+        f_title = _font("Chakra Petch", "Rajdhani", "Segoe UI", "Arial", size=18, weight="bold")
+        f_tag   = _font("Rajdhani", "Segoe UI", "Arial", size=9)
+        f_label = _font("Rajdhani", "Segoe UI", "Arial", size=10, weight="bold")
+        f_body  = _font("Segoe UI", "Arial", size=10)
+        f_entry = _font("Consolas", "Courier New", "Menlo", "Monospace", size=11)
+        f_btn   = _font("Rajdhani", "Segoe UI", "Arial", size=10, weight="bold")
+
+        outer = tk.Frame(dlg, bg=BG, padx=32, pady=24)
+        outer.pack(fill="both", expand=True)
+
+        tk.Label(outer, text="SecretFire", font=f_title, fg=CYAN, bg=BG).pack(anchor="w")
+        tk.Label(outer, text="anonymous  ·  encrypted  ·  decentralized",
+                 font=f_tag, fg=FG_DIM, bg=BG).pack(anchor="w", pady=(2, 0))
+        tk.Frame(outer, bg=SEP, height=1).pack(fill="x", pady=(12, 16))
+        tk.Label(outer, text=message, font=f_body, fg=FG, bg=BG,
+                 wraplength=380, justify="left").pack(anchor="w", pady=(0, 18))
+
+        def _entry_block(label_text: str) -> tk.Entry:
+            tk.Label(outer, text=label_text, font=f_label,
+                     fg=CYAN, bg=BG).pack(anchor="w", pady=(0, 4))
+            border = tk.Frame(outer, bg=CYAN, padx=1, pady=1)
+            border.pack(fill="x", pady=(0, 14))
+            e = tk.Entry(border, show="•", font=f_entry,
+                         bg=BG2, fg=FG, insertbackground=CYAN,
+                         relief="flat", bd=0)
+            e.pack(fill="x", ipady=7, padx=1)
+            return e
+
+        pw_entry = _entry_block("Password")
         pw_entry.focus_set()
         pw2_entry = None
         if confirm:
-            tk.Label(frame, text="Confirm password:").pack(anchor="w", pady=(8, 2))
-            pw2_entry = tk.Entry(frame, show="*", width=38)
-            pw2_entry.pack(fill="x")
+            pw2_entry = _entry_block("Confirm password")
 
         def on_ok(event=None):
             pw = pw_entry.get()
             if not pw:
-                messagebox.showerror("Error", "Password cannot be empty.", parent=dlg)
+                messagebox.showerror("SecretFire", "Password cannot be empty.", parent=dlg)
                 return
             if confirm and pw2_entry and pw != pw2_entry.get():
-                messagebox.showerror("Error", "Passwords do not match.", parent=dlg)
+                messagebox.showerror("SecretFire", "Passwords do not match.", parent=dlg)
                 return
             result[0] = pw
             dlg.destroy()
@@ -117,17 +158,26 @@ def _prompt_import_password(title: str, message: str, confirm: bool = True) -> s
             dlg.destroy()
             root.destroy()
 
-        btn = tk.Frame(frame, pady=12)
-        btn.pack()
-        tk.Button(btn, text="OK",     command=on_ok,     width=10).pack(side="left", padx=5)
-        tk.Button(btn, text="Cancel", command=on_cancel, width=10).pack(side="left", padx=5)
+        btn_row = tk.Frame(outer, bg=BG)
+        btn_row.pack(pady=(6, 0))
+        btn_label = "SET PASSWORD" if confirm else "UNLOCK"
+        tk.Button(btn_row, text=btn_label, font=f_btn,
+                  fg=BG, bg=CYAN, activebackground="#00b8d4", activeforeground=BG,
+                  relief="flat", bd=0, padx=20, pady=7, cursor="hand2",
+                  command=on_ok).pack(side="left", padx=(0, 12))
+        tk.Button(btn_row, text="Cancel", font=f_btn,
+                  fg=FG_DIM, bg=BG, activebackground=BG2, activeforeground=FG,
+                  relief="flat", bd=0, padx=12, pady=7, cursor="hand2",
+                  command=on_cancel).pack(side="left")
+
         dlg.bind("<Return>", on_ok)
         dlg.bind("<Escape>", lambda e: on_cancel())
         dlg.update_idletasks()
-        w, h = dlg.winfo_reqwidth(), dlg.winfo_reqheight()
+        w = max(dlg.winfo_reqwidth(), 460)
+        h = dlg.winfo_reqheight()
         x = (dlg.winfo_screenwidth()  - w) // 2
         y = (dlg.winfo_screenheight() - h) // 2
-        dlg.geometry(f"+{x}+{y}")
+        dlg.geometry(f"{w}x{h}+{x}+{y}")
         root.mainloop()
         return result[0]
     except Exception as e:
