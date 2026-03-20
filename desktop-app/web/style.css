@@ -725,3 +725,88 @@ input[type="text"]:focus { border-color: var(--accent); }
   #app { grid-template-columns: 1fr; grid-template-areas: "header" "main"; }
   aside { display: none; }
 }
+
+/* ── Styled modal ────────────────────────────────────────────────────── */
+.sf-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: sf-fade 0.12s ease;
+}
+.sf-modal-overlay[hidden] { display: none; }
+
+@keyframes sf-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.sf-modal-card {
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  box-shadow: 0 0 48px rgba(0,229,255,0.10), 0 12px 40px rgba(0,0,0,0.70);
+  min-width: 320px;
+  max-width: 460px;
+  width: 90vw;
+  padding: 28px 28px 22px;
+  animation: sf-slide 0.15s ease;
+}
+
+@keyframes sf-slide {
+  from { opacity: 0; transform: translateY(-10px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+
+.sf-modal-header {
+  font-family: var(--display);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.sf-modal-body {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.65;
+  margin-bottom: 20px;
+  white-space: pre-wrap;
+}
+
+.sf-modal-input-wrap { margin-bottom: 20px; }
+.sf-modal-input-wrap[hidden] { display: none; }
+
+.sf-modal-input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 8px 12px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.sf-modal-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+
+.sf-modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.btn-danger {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+.btn-danger:hover { background: #cc3333; border-color: #cc3333; }
+/* ─────────────────────────────────────────────────────────────────────── */

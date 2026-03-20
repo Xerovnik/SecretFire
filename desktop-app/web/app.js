@@ -248,7 +248,7 @@ async function addPeer() {
 
 async function promptNickname(pubkey) {
   const current = appState.nicknames[pubkey] || "";
-  const nick = prompt(`Nickname for ${pubkey.slice(0,14)}\u2026 (blank to remove):`, current);
+  const nick = await sfPrompt("Set Nickname", `Nickname for ${pubkey.slice(0,14)}\u2026\n\nLeave blank to remove the nickname.`, current);
   if (nick === null) return;
   try {
     await apiFetch(`/api/nicknames/${encodeURIComponent(pubkey)}`, {
@@ -478,8 +478,11 @@ async function submitReply(parentId) {
 }
 
 async function deletePost(postId) {
-  const confirmed = window.confirm(
-    "Delete this post from your local node?\n\nNote: this cannot be undone. Peers that already received this post will still have a copy."
+  const confirmed = await sfConfirm(
+    "Delete Post",
+    "Delete this post from your local node?\n\nThis cannot be undone. Peers that already received this post will still have a copy.",
+    "Delete",
+    true,
   );
   if (!confirmed) return;
   try {
@@ -601,7 +604,7 @@ async function importIdentity() {
   if (!raw) { toast("Paste your identity JSON first", "error"); return; }
   let parsed;
   try { parsed = JSON.parse(raw); } catch { toast("Invalid JSON", "error"); return; }
-  if (!confirm("Importing will replace your current identity. Continue?")) return;
+  if (!await sfConfirm("Replace Identity", "Importing will replace your current identity.\n\nThis cannot be undone. Make sure you have a backup first.", "Import", true)) return;
   try {
     const r = await apiFetch("/api/identity/import", { method:"POST", body: JSON.stringify(parsed) });
     toast(r.message || "Imported! Restart to apply.", "success");
@@ -733,6 +736,68 @@ async function applyUpdate() {
     await apiFetch("/api/update/apply", { method: "POST" });
   } catch (_) { /* app exits — connection drops, that's expected */ }
 }
+
+/* ── Styled modal system (replaces native confirm / prompt) ──────────── */
+let _sfResolve = null;
+
+function _sfShow({ title, message, okLabel = 'OK', danger = false, isPrompt = false, defaultValue = '' }) {
+  document.getElementById('sf-modal-header').textContent = title;
+  document.getElementById('sf-modal-body').textContent   = message;
+  const wrap  = document.getElementById('sf-modal-input-wrap');
+  const input = document.getElementById('sf-modal-input');
+  const okBtn = document.getElementById('sf-modal-ok');
+  if (isPrompt) {
+    wrap.removeAttribute('hidden');
+    input.value = defaultValue;
+  } else {
+    wrap.setAttribute('hidden', '');
+  }
+  okBtn.textContent = okLabel;
+  okBtn.className   = 'btn btn-sm' + (danger ? ' btn-danger' : '');
+  document.getElementById('sf-modal').removeAttribute('hidden');
+  setTimeout(() => (isPrompt ? input : okBtn).focus(), 30);
+  return new Promise(res => { _sfResolve = res; });
+}
+
+function _sfClose(value) {
+  document.getElementById('sf-modal').setAttribute('hidden', '');
+  if (_sfResolve) { _sfResolve(value); _sfResolve = null; }
+}
+
+function sfConfirm(title, message, okLabel = 'OK', danger = false) {
+  return _sfShow({ title, message, okLabel, danger, isPrompt: false });
+}
+
+function sfPrompt(title, message, defaultValue = '') {
+  return _sfShow({ title, message, okLabel: 'OK', isPrompt: true, defaultValue });
+}
+
+(function _sfBindEvents() {
+  document.getElementById('sf-modal-ok').addEventListener('click', () => {
+    const wrap = document.getElementById('sf-modal-input-wrap');
+    _sfClose(wrap.hasAttribute('hidden') ? true : document.getElementById('sf-modal-input').value);
+  });
+  document.getElementById('sf-modal-cancel').addEventListener('click', () => {
+    const wrap = document.getElementById('sf-modal-input-wrap');
+    _sfClose(wrap.hasAttribute('hidden') ? false : null);
+  });
+  document.getElementById('sf-modal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) {
+      const wrap = document.getElementById('sf-modal-input-wrap');
+      _sfClose(wrap.hasAttribute('hidden') ? false : null);
+    }
+  });
+  document.addEventListener('keydown', e => {
+    const overlay = document.getElementById('sf-modal');
+    if (overlay.hasAttribute('hidden')) return;
+    const wrap = document.getElementById('sf-modal-input-wrap');
+    if (e.key === 'Escape') { e.preventDefault(); _sfClose(wrap.hasAttribute('hidden') ? false : null); }
+    if (e.key === 'Enter' && !wrap.hasAttribute('hidden')) {
+      e.preventDefault();
+      _sfClose(document.getElementById('sf-modal-input').value);
+    }
+  });
+})();
 
 /* ── Boot ────────────────────────────────────────────────────────────── */
 async function init() {

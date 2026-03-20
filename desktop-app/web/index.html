@@ -261,6 +261,22 @@
 </div>
 
 <div id="toast" class="toast"></div>
+
+<!-- ── Styled modal (replaces native confirm / prompt) ── -->
+<div id="sf-modal" class="sf-modal-overlay" hidden>
+  <div class="sf-modal-card">
+    <div class="sf-modal-header" id="sf-modal-header"></div>
+    <div class="sf-modal-body"   id="sf-modal-body"></div>
+    <div class="sf-modal-input-wrap" id="sf-modal-input-wrap" hidden>
+      <input id="sf-modal-input" class="sf-modal-input" type="text" autocomplete="off" />
+    </div>
+    <div class="sf-modal-actions">
+      <button id="sf-modal-cancel" class="btn btn-ghost btn-sm">Cancel</button>
+      <button id="sf-modal-ok"     class="btn btn-sm">OK</button>
+    </div>
+  </div>
+</div>
+
 <script src="app.js"></script>
 </body>
 </html>
