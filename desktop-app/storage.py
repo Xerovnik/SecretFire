@@ -352,6 +352,16 @@ def get_peers(active_only=False):
     return [dict(r) for r in rows]
 
 
+def get_peer(onion_address: str) -> dict | None:
+    """Return a single peer row, or None if not found."""
+    row = _conn().execute(
+        "SELECT onion_address, last_seen, is_active, posts_shared, auth_pubkey, auth_verified "
+        "FROM peers WHERE onion_address=?",
+        (onion_address,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
 def update_peer_status(onion_address, is_active):
     conn = _conn()
     conn.execute(

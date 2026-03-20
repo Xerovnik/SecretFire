@@ -264,7 +264,12 @@ class GossipManager:
                 self._sync_peer(addr)
             except Exception as e:
                 logger.debug(f"Failed to sync {addr}: {e}")
-                storage.update_peer_status(addr, False)
+                # Re-read last_seen so we don't override a recent inbound contact.
+                # If the peer reached us while our outbound was timing out, their
+                # last_seen was refreshed by save_peer() — keep them active.
+                fresh = storage.get_peer(addr)
+                if fresh is None or (time.time() - fresh["last_seen"] > GOSSIP_INTERVAL * 2):
+                    storage.update_peer_status(addr, False)
 
     def _sync_peer(self, onion_address: str):
         session = self._get_session()
@@ -299,8 +304,9 @@ class GossipManager:
                 payload["challenge_response"] = sig
                 logger.debug(f"Sending challenge response to {onion_address}")
 
-        resp = session.post(url, json=payload, timeout=20)
+        resp = session.post(url, json=payload, timeout=(60, 30))
         if resp.status_code != 200:
+            storage.update_peer_status(onion_address, False)
             return
 
         data = resp.json()
@@ -516,6 +522,7 @@ class GossipManager:
         if from_peer and from_peer != self.tor.onion_address:
             if _is_valid_onion(from_peer):
                 storage.save_peer(from_peer)
+                storage.update_peer_status(from_peer, True)
             else:
                 logger.warning(
                     f"Sync request from invalid onion address: {from_peer!r}"
